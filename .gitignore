@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+memory/logs/*.log
+memory/passivbot_logs/**/*.log
+
+# Database (keep structure, not data)
+*.db
+*.db-journal
+memory/*.db
+memory/**/*.db
+
+# Cache
+.cache/
+__pycache__/
+*.cache
+
+# Environment
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.pid
+
+# Large data files
+*.csv
+*.parquet
+*.parquet.tmp
+
+# Skills cache
+.skills/
+.clawhub/
+.openclaw/
+
+# Keep directory structure
+!memory/.gitkeep
+!memory/logs/.gitkeep
+!memory/passivbot_logs/.gitkeep

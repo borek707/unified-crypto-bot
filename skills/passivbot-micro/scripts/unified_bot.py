@@ -195,10 +195,14 @@ class UnifiedBot:
         
         # Find recent low
         recent_low = min(price_history[-24:])  # Last 24 hours
-        
+
+        # Safety: avoid division by zero
+        if recent_low <= 0:
+            return False
+
         # Bounce from low
         bounce = (price - recent_low) / recent_low
-        
+
         return bounce >= self.config.short_bounce_threshold
     
     def should_exit_short(self, position: Dict, current_price: float) -> Optional[str]:
@@ -517,37 +521,34 @@ class UnifiedBot:
                     continue
                 
                 price_history.append(price)
-                if len(price_history) > 200:
-                    price_history.pop(0)
+                if len(price_history) > 3000:  # Keep 50h of data (buffer above 48h requirement)
+                    price_history = price_history[-2880:]
                 
                 # Detect trend
                 new_trend = self.detect_trend(price_history)
-                
-                if new_trend != self.current_trend:
-                    logger.info(f"🔄 TREND CHANGE: {self.current_trend} → {new_trend}")
-                    self.current_trend = new_trend
-                
+
                 # Print trend every hour
                 if time.time() - last_trend_print > 3600:
                     logger.info(f"📊 Current trend: {self.current_trend.upper()}")
                     last_trend_print = time.time()
-                
+
                 # === EXECUTE STRATEGY BASED ON TREND ===
-                
-                # FIX 3: Trend change - cancel orders, don't close positions
+
+                # FIX: Trend change detection - must check BEFORE updating current_trend
                 if new_trend != previous_trend:
                     logger.info(f"🔄 TREND CHANGE: {previous_trend} → {new_trend}")
-                    
+
                     # Cancel all pending grid/DCA orders (don't close open positions!)
                     logger.info("📋 Canceling all pending orders (leaving open positions)")
                     self.grid_orders.clear()  # Clear pending grid orders
-                    
+
                     # Log open positions (they will hit SL/TP on their own)
                     if self.positions_long:
                         logger.info(f"📈 Leaving {len(self.positions_long)} LONG positions open (SL/TP active)")
                     if self.positions_short:
                         logger.info(f"📉 Leaving {len(self.positions_short)} SHORT positions open (SL/TP active)")
-                    
+
+                    # Update trend tracking
                     self.current_trend = new_trend
                     previous_trend = new_trend
                 
@@ -570,31 +571,20 @@ class UnifiedBot:
                 
                 elif self.current_trend == 'uptrend':
                     # LONG Grid STRATEGY
-                    
+
                     # FIX 3: Don't close shorts! Let them hit SL/TP
-                    # Grid logic for longs
+                    # Check TP and remove closed positions first
+                    for pos in self.positions_long[:]:
+                        if price >= pos['tp_price']:
+                            await self.close_long_grid(pos, price)
+                            self.positions_long.remove(pos)
+
+                    # Then check for new entry (only if no positions)
                     if not self.positions_long:
                         if self.should_enter_long_grid(price, price_history):
                             pos = await self.open_long_grid(price)
                             if pos:
                                 self.positions_long.append(pos)
-                    else:
-                        # Check TP
-                        for pos in self.positions_long[:]:
-                            if price >= pos['tp_price']:
-                                await self.close_long_grid(pos, price)
-                                self.positions_long.remove(pos)
-                    if not self.positions_long:
-                        if self.should_enter_long_grid(price, price_history):
-                            pos = await self.open_long_grid(price)
-                            if pos:
-                                self.positions_long.append(pos)
-                    else:
-                        # Check TP
-                        for pos in self.positions_long[:]:
-                            if price >= pos['tp_price']:
-                                await self.close_long_grid(pos, price)
-                                self.positions_long.remove(pos)
                 
                 else:  # sideways
                     # Close all leveraged positions (keep grid positions)

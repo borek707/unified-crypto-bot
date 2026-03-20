@@ -25,13 +25,14 @@ from datetime import datetime
 from typing import Optional, Dict, List, Literal
 import time
 
-# Setup logging
-os.makedirs('/home/ubuntu/.openclaw/workspace/memory/passivbot_logs', exist_ok=True)
+# Setup logging - use environment variable or default to home directory
+LOG_DIR = Path(os.getenv('BOT_LOG_DIR', Path.home() / '.crypto_bot' / 'logs'))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
-        logging.FileHandler('/home/ubuntu/.openclaw/workspace/memory/passivbot_logs/unified_bot.log'),
+        logging.FileHandler(LOG_DIR / 'unified_bot.log'),
         logging.StreamHandler()
     ]
 )
@@ -119,10 +120,19 @@ class UnifiedBot:
         """Initialize exchange connection."""
         try:
             import ccxt
-            
-            api_key = os.getenv('HYPERLIQUID_API_KEY', '')
-            secret = os.getenv('HYPERLIQUID_SECRET', '')
-            
+
+            api_key = os.getenv('HYPERLIQUID_API_KEY', '').strip()
+            secret = os.getenv('HYPERLIQUID_SECRET', '').strip()
+
+            # Validate API keys before attempting connection
+            if not self.config.testnet and (not api_key or not secret):
+                logger.error("❌ API keys not configured. Set HYPERLIQUID_API_KEY and HYPERLIQUID_SECRET")
+                return False
+
+            if not self.config.testnet and len(api_key) < 10:
+                logger.error("❌ API key appears invalid (too short)")
+                return False
+
             self.exchange = ccxt.hyperliquid({
                 'enableRateLimit': True,
                 'apiKey': api_key,
@@ -487,8 +497,9 @@ class UnifiedBot:
                     # Try 2: Local database
                     try:
                         import sqlite3
-                        from pathlib import Path
-                        db_path = Path('~/.openclaw/workspace/memory/crypto_prices.db').expanduser()
+                        # Use environment variable or default to user home
+                        data_dir = Path(os.getenv('BOT_DATA_DIR', Path.home() / '.crypto_bot' / 'data'))
+                        db_path = data_dir / 'crypto_prices.db'
                         if db_path.exists():
                             conn = sqlite3.connect(db_path)
                             cursor = conn.cursor()
@@ -503,7 +514,15 @@ class UnifiedBot:
                         
                         # Try 3: External API (Coinpaprika)
                         try:
-                            sys.path.insert(0, str(Path('~/.openclaw/workspace/skills/finance-tracker/scripts').expanduser()))
+                            # Try to find crypto_price_fetcher in common locations
+                            script_dirs = [
+                                Path(os.getenv('BOT_SCRIPTS_DIR', Path.home() / '.crypto_bot' / 'scripts')),
+                                Path(__file__).parent.parent / 'finance-tracker' / 'scripts',
+                            ]
+                            for script_dir in script_dirs:
+                                if script_dir.exists():
+                                    sys.path.insert(0, str(script_dir))
+                                    break
                             from crypto_price_fetcher import CryptoPriceFetcher
                             fetcher = CryptoPriceFetcher()
                             result = fetcher.get_price_with_fallback()

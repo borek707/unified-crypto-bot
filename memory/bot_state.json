@@ -2,18 +2,10 @@
   "positions_short": [],
   "positions_long": [
     {
-      "id": "sideways_GRID_1774042869",
-      "entry_price": 70383.5,
-      "amount": 0.00010655906569011204,
-      "tp_price": 70946.568,
-      "type": "sideways",
-      "is_dca": false
-    },
-    {
-      "id": "sideways_GRID_1774044813",
-      "entry_price": 70781.5,
-      "amount": 0.00010595989064939285,
-      "tp_price": 71347.75200000001,
+      "id": "sideways_GRID_1774043490",
+      "entry_price": 70511.5,
+      "amount": 7.091041886784426e-05,
+      "tp_price": 71216.615,
       "type": "sideways",
       "is_dca": false
     }
@@ -22,9 +14,9 @@
     "trades_total": 0,
     "trades_short": 0,
     "trades_long": 1,
-    "profit_total": 0.06056383320827527,
+    "profit_total": 0.050309072069174975,
     "profit_short": 0.0,
-    "profit_long": 0.06056383320827527,
+    "profit_long": 0.050309072069174975,
     "daily_loss": 0.0,
     "last_reset": "2026-03-20"
   },

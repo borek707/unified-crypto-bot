@@ -64,9 +64,75 @@ python3 -c "from enhanced_unified_bot import *; print('✅ OK')"
 ```
 
 ### Następny krok (Etap 2):
-- [ ] Moduł Technical Analysis (fix literówki)
-- [ ] Choppiness Index, Keltner Channels, Squeeze
-- [ ] Backtest engine
+- [x] Moduł Technical Analysis (fix literówki)
+- [x] Choppiness Index, Keltner Channels, Squeeze
+- [x] Backtest engine
+
+---
+*Data: 2026-03-21*
+
+## Etap 2: Technical Analysis + Backtest Engine ✅
+
+### Dodano nowe komponenty:
+
+#### 1. Technical Analysis Module (`technical_analysis.py`)
+Własne implementacje wskaźników (bez pandas_ta):
+
+**Core Indicators:**
+- `EMA`, `SMA` - średnie kroczące
+- `RSI` - Relative Strength Index
+- `ATR` - Average True Range
+- `Bollinger Bands` - wstęgi Bollingera
+- `ADX` - Average Directional Index
+- `MACD` - Moving Average Convergence Divergence
+
+**Sideways-Specific Indicators:**
+- `Choppiness Index` - detekcja konsolidacji (CI > 61.8 = sideways!)
+- `Keltner Channels` - kanały dla grid trading
+- `TTM Squeeze` - wykrywanie breakout przed wybiciem
+- `Volume Profile` - poziomy z wysokim wolumenem (S/R)
+- `VWAP` - Volume Weighted Average Price
+- `SuperTrend` - prosty wskaźnik trendu
+
+**Klasy:**
+- `SidewaysAnalyzer` - kompletna analiza rynku sideways
+  - `is_sideways_market()` - wielo-wskaźnikowa detekcja
+  - `get_optimal_grid_params()` - dynamiczne spacing/markup
+  - `find_support_resistance()` - wielowymiarowe S/R
+  - `generate_signal()` - pełna analiza sygnału
+
+#### 2. Enhanced Backtest Engine (`enhanced_backtest.py`)
+Nowy silnik backtestu:
+- Integracja z Technical Analysis
+- Entry/Exit logic z filtrami
+- Metryki: Win Rate, Profit Factor, Sharpe, Drawdown
+- Equity curve tracking
+- Wyniki w JSON
+
+**Wyniki testu (sideways market):**
+```
+Trades: 11
+Return: +0.35%
+Win Rate: 72.7%
+Max DD: 0.20%
+```
+
+### Pliki Etapu 2:
+- `technical_analysis.py` - moduł TA (22KB)
+- `enhanced_backtest.py` - silnik backtestu (18KB)
+
+### Testy:
+```bash
+cd scripts
+python3 technical_analysis.py          # Demo TA
+python3 enhanced_backtest.py           # Demo backtest
+```
+
+### Zmiany względem Z.ai files:
+- ✅ Fix literówki: `ema21` → `ema_21`
+- ✅ Bez pandas_ta - czysty numpy/pandas
+- ✅ Kompatybilny z EnhancedUnifiedBot
+- ✅ Lepsza detekcja sideways (5 wskaźników)
 
 ---
 *Data: 2026-03-21*

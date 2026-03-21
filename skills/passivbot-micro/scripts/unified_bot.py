@@ -21,8 +21,9 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, asdict
-from datetime import datetime
-from typing import Optional, Dict, List, Literal
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional, Dict, List, Literal, Tuple
 import time
 
 # Setup logging - use environment variable or default to home directory
@@ -39,15 +40,129 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# CIRCUIT BREAKER - Protection against excessive losses
+# ============================================================================
+
+class CircuitBreaker:
+    """Circuit breaker - stops trading when loss limits are exceeded."""
+    
+    def __init__(
+        self,
+        max_daily_loss_pct: float = 0.05,
+        max_drawdown_pct: float = 0.15,
+        max_consecutive_losses: int = 5,
+        cooldown_minutes: int = 60
+    ):
+        self.max_daily_loss_pct = max_daily_loss_pct
+        self.max_drawdown_pct = max_drawdown_pct
+        self.max_consecutive_losses = max_consecutive_losses
+        self.cooldown_minutes = cooldown_minutes
+        
+        self.active = False
+        self.reason = ""
+        self.activated_at: Optional[datetime] = None
+        self.cooldown_until: Optional[datetime] = None
+        
+        # Tracking
+        self.consecutive_losses = 0
+        self.max_consecutive_losses_seen = 0
+        self.daily_pnl = 0.0
+        self.peak_balance = 0.0
+        self.initial_balance = 0.0
+    
+    def initialize(self, initial_balance: float):
+        """Initialize with starting balance."""
+        self.initial_balance = initial_balance
+        self.peak_balance = initial_balance
+    
+    def check(self, current_balance: float) -> tuple:
+        """Check if circuit breaker should activate. Returns: (should_stop, reason)"""
+        # Check cooldown reset
+        if self.cooldown_until and datetime.now() >= self.cooldown_until:
+            self.reset()
+        
+        if self.cooldown_until and datetime.now() < self.cooldown_until:
+            return True, f"Circuit breaker cooldown until {self.cooldown_until.strftime('%H:%M')}"
+        
+        # Calculate drawdown
+        if current_balance > self.peak_balance:
+            self.peak_balance = current_balance
+        
+        drawdown = (self.peak_balance - current_balance) / self.peak_balance if self.peak_balance > 0 else 0
+        
+        # Check daily loss
+        daily_loss_pct = abs(self.daily_pnl) / self.initial_balance if self.initial_balance > 0 else 0
+        if daily_loss_pct > self.max_daily_loss_pct:
+            self.activate(f"Daily loss limit: {daily_loss_pct:.2%}")
+            return True, self.reason
+        
+        # Check drawdown
+        if drawdown > self.max_drawdown_pct:
+            self.activate(f"Max drawdown: {drawdown:.2%}")
+            return True, self.reason
+        
+        # Check consecutive losses
+        if self.consecutive_losses >= self.max_consecutive_losses:
+            self.activate(f"Consecutive losses: {self.consecutive_losses}")
+            return True, self.reason
+        
+        return False, ""
+    
+    def record_trade(self, pnl: float):
+        """Record trade result."""
+        self.daily_pnl += pnl
+        
+        if pnl < 0:
+            self.consecutive_losses += 1
+            self.max_consecutive_losses_seen = max(
+                self.max_consecutive_losses_seen,
+                self.consecutive_losses
+            )
+        else:
+            self.consecutive_losses = 0
+    
+    def activate(self, reason: str):
+        """Activate circuit breaker."""
+        self.active = True
+        self.reason = reason
+        self.activated_at = datetime.now()
+        self.cooldown_until = datetime.now() + timedelta(minutes=self.cooldown_minutes)
+        logger.warning(f"🔴 CIRCUIT BREAKER ACTIVATED: {reason}")
+        logger.warning(f"⏸️  Trading suspended until {self.cooldown_until.strftime('%H:%M')}")
+    
+    def reset(self):
+        """Reset circuit breaker."""
+        if self.active:
+            logger.info("🟢 Circuit breaker reset - trading resumed")
+        self.active = False
+        self.reason = ""
+        self.activated_at = None
+        self.cooldown_until = None
+        self.consecutive_losses = 0
+    
+    def reset_daily(self):
+        """Reset daily stats (call at midnight)."""
+        self.daily_pnl = 0.0
+
+
 @dataclass
 class UnifiedConfig:
-    """Configuration for unified bot."""
+    """Configuration for unified bot with Circuit Breaker."""
+    
     # Account
     initial_capital: float = 100.0
     
-    # Trend detection
-    trend_lookback: int = 48  # 48 hours
-    trend_threshold: float = 0.05  # 5%
+    # === CIRCUIT BREAKER ===
+    circuit_breaker_enabled: bool = True
+    max_daily_loss_pct: float = 0.05  # 5% daily loss
+    max_drawdown_pct: float = 0.15    # 15% max drawdown
+    max_consecutive_losses: int = 5   # 5 losses in a row
+    circuit_cooldown_minutes: int = 60  # 1 hour cooldown
+    
+    # === RISK MANAGEMENT ===
+    risk_per_trade_pct: float = 0.01   # 1% risk per trade
+    max_total_exposure_pct: float = 0.50  # 50% max exposure
     
     # === DOWNTREND: SHORT 3x ===
     short_leverage: float = 3.0
@@ -68,6 +183,8 @@ class UnifiedConfig:
     sideways_dca_pct: float = 0.70   # 70% capital
     sideways_spacing: float = 0.01   # 1%
     sideways_markup: float = 0.008   # 0.8%
+    max_grid_positions: int = 4
+    max_dca_per_position: int = 3
     
     # Safety
     daily_loss_limit: float = 0.15  # 15%
@@ -115,6 +232,20 @@ class UnifiedBot:
             'daily_loss': 0.0,
             'last_reset': datetime.now().date()
         }
+        
+        # Circuit Breaker
+        self.circuit_breaker = CircuitBreaker(
+            max_daily_loss_pct=config.max_daily_loss_pct,
+            max_drawdown_pct=config.max_drawdown_pct,
+            max_consecutive_losses=config.max_consecutive_losses,
+            cooldown_minutes=config.circuit_cooldown_minutes
+        )
+        
+        # Balance tracking for CB
+        self.current_balance = config.initial_capital
+        self.peak_balance = config.initial_capital
+        
+        logger.info("🤖 Unified Bot initialized (with Circuit Breaker v3.0)")
     
     async def initialize(self):
         """Initialize exchange connection."""
@@ -146,6 +277,10 @@ class UnifiedBot:
             self.exchange.load_markets()
             logger.info(f"✅ Connected to {self.config.exchange}")
             logger.info(f"Mode: {'PAPER (Testnet mode not available)' if self.config.testnet else 'LIVE'}")
+            
+            # Initialize Circuit Breaker
+            self.circuit_breaker.initialize(self.config.initial_capital)
+            
             return True
             
         except Exception as e:
@@ -197,6 +332,14 @@ class UnifiedBot:
     
     def should_enter_short(self, price: float, price_history: List[float]) -> bool:
         """Check if we should enter SHORT position."""
+        # Circuit breaker check
+        if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
+            return False
+        
+        # Exposure check
+        if not self._check_exposure_limit():
+            return False
+        
         if len(self.positions_short) >= self.config.short_max_positions:
             return False
         
@@ -264,6 +407,13 @@ class UnifiedBot:
         
         logger.info(f"📉 CLOSE SHORT ({reason}): PnL ${pnl:.2f}")
         
+        # Record for circuit breaker
+        if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
+        
         self.stats['trades_short'] += 1
         self.stats['profit_short'] += pnl
         self.stats['profit_total'] += pnl
@@ -280,6 +430,14 @@ class UnifiedBot:
         if len(price_history) < 10:
             return False
         
+        # Circuit breaker check
+        if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
+            return False
+        
+        # Exposure check
+        if not self._check_exposure_limit():
+            return False
+        
         # Find recent high
         recent_high = max(price_history[-24:])
         
@@ -287,6 +445,12 @@ class UnifiedBot:
         dip = (recent_high - price) / recent_high
         
         return dip >= self.config.long_grid_spacing
+    
+    def _check_exposure_limit(self, new_position_size: float = 0) -> bool:
+        """Check if adding new position would exceed exposure limit."""
+        current_exposure = sum(p.get('size', 0) for p in self.positions_long + self.positions_short)
+        exposure_pct = (current_exposure + new_position_size) / self.current_balance if self.current_balance > 0 else 0
+        return exposure_pct <= self.config.max_total_exposure_pct
     
     async def open_long_grid(self, price: float) -> Optional[Dict]:
         """Open LONG grid position."""
@@ -313,6 +477,13 @@ class UnifiedBot:
         pnl = (price - entry) / entry * (amount * entry)
         
         logger.info(f"📈 CLOSE LONG Grid: PnL ${pnl:.2f}")
+        
+        # Record for circuit breaker
+        if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
         
         self.stats['trades_long'] += 1
         self.stats['profit_long'] += pnl
@@ -349,6 +520,19 @@ class UnifiedBot:
     
     def should_enter_sideways_grid(self, price: float, levels: Dict) -> bool:
         """Check if we should enter sideways grid position."""
+        # Circuit breaker check
+        if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
+            return False
+        
+        # Max positions check
+        sideways_positions = [p for p in self.positions_long if p.get('type') == 'sideways']
+        if len(sideways_positions) >= self.config.max_grid_positions:
+            return False
+        
+        # Exposure check
+        if not self._check_exposure_limit():
+            return False
+        
         if not levels:
             return False
         
@@ -413,6 +597,13 @@ class UnifiedBot:
         
         logger.info(f"📊 CLOSE SIDEWAYS {pos_type} ({reason}): PnL ${pnl:.2f}")
         
+        # Record for circuit breaker
+        if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
+        
         self.stats['trades_long'] += 1  # Count as long trade
         self.stats['profit_long'] += pnl
         self.stats['profit_total'] += pnl
@@ -465,10 +656,16 @@ class UnifiedBot:
     async def run(self):
         """Main bot loop."""
         logger.info("="*70)
-        logger.info("🚀 UNIFIED BOT STARTED")
+        logger.info("🚀 UNIFIED BOT STARTED (v3.0 with Circuit Breaker)")
         logger.info("="*70)
         logger.info(f"Capital: ${self.config.initial_capital}")
         logger.info(f"Trend detection: {self.config.trend_lookback}h / {self.config.trend_threshold*100:.0f}%")
+        if self.config.circuit_breaker_enabled:
+            logger.info(f"Circuit Breaker: ENABLED")
+            logger.info(f"  - Max daily loss: {self.config.max_daily_loss_pct:.1%}")
+            logger.info(f"  - Max drawdown: {self.config.max_drawdown_pct:.1%}")
+            logger.info(f"  - Max consecutive losses: {self.config.max_consecutive_losses}")
+            logger.info(f"  - Cooldown: {self.config.circuit_cooldown_minutes} min")
         logger.info("="*70)
         
         # Initialize exchange connection
@@ -478,10 +675,27 @@ class UnifiedBot:
         
         price_history = []
         last_trend_print = time.time()
-        previous_trend = self.current_trend  # Initialize previous_trend
+        previous_trend = self.current_trend
+        last_day = datetime.now().date()
         
         while True:
             try:
+                # Check for new day (reset daily stats)
+                current_day = datetime.now().date()
+                if current_day != last_day:
+                    if self.config.circuit_breaker_enabled:
+                        self.circuit_breaker.reset_daily()
+                    last_day = current_day
+                    logger.info("📅 New day - daily stats reset")
+                
+                # Check circuit breaker
+                if self.config.circuit_breaker_enabled:
+                    should_stop, cb_reason = self.circuit_breaker.check(self.current_balance)
+                    if should_stop:
+                        logger.warning(f"⏸️  Trading suspended: {cb_reason}")
+                        await asyncio.sleep(60)  # Check every minute during CB
+                        continue
+                
                 # Get price with fallback
                 price = None
                 
@@ -635,6 +849,10 @@ class UnifiedBot:
         logger.info("="*70)
         logger.info("📊 FINAL STATISTICS")
         logger.info("="*70)
+        if self.config.circuit_breaker_enabled:
+            logger.info(f"Final Balance: ${self.current_balance:.2f} (Peak: ${self.peak_balance:.2f})")
+            logger.info(f"Max Drawdown: {self.circuit_breaker.max_drawdown_pct:.2%}")
+            logger.info(f"Consecutive Losses (max): {self.circuit_breaker.max_consecutive_losses_seen}")
         logger.info(f"Total Trades: {self.stats['trades_short'] + self.stats['trades_long']}")
         logger.info(f"  SHORT: {self.stats['trades_short']} | Profit: ${self.stats['profit_short']:.2f}")
         logger.info(f"  LONG:  {self.stats['trades_long']} | Profit: ${self.stats['profit_long']:.2f}")

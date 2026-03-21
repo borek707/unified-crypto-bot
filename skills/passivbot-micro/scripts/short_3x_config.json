@@ -1,0 +1,16 @@
+{
+  "initial_capital": 100.0,
+  "leverage": 3.0,
+  "position_size_pct": 0.15,
+  "max_positions": 2,
+  "bounce_threshold": 0.015,
+  "trend_lookback": 48,
+  "take_profit_pct": 0.04,
+  "stop_loss_pct": 0.025,
+  "liquidation_buffer": 0.1,
+  "daily_loss_limit": 0.15,
+  "exchange": "hyperliquid",
+  "symbol": "BTC/USDC:USDC",
+  "testnet": true,
+  "check_interval": 60
+}

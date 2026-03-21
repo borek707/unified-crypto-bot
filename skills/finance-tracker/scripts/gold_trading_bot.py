@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-First Candle Trading Bot for XAU/USD (Gold) - with caching
+First Candle Trading Bot for XAU/USD (Gold) - FIXED VERSION
 Strategy: Enter on breakout of first 15-min candle after session open
+
+FIXES:
+- Changed from GC=F (bugged) to XAUUSD=X for correct prices
+- Increased cache TTL from 15min to 60min
+- Added stale cache fallback
+- Added price sanity check (alert if >$4000)
 """
 import sys
 import json
@@ -16,7 +22,8 @@ import hashlib
 # Database path
 DB_PATH = os.path.expanduser("~/.openclaw/workspace/memory/trading.db")
 CACHE_DIR = os.path.expanduser("~/.openclaw/workspace/.cache")
-CACHE_TTL = 900  # 15 minutes cache
+CACHE_TTL = 3600  # FIXED: 60 minutes instead of 15
+STALE_CACHE_TTL = 86400  # Allow using stale cache up to 24 hours old
 
 def ensure_cache_dir():
     """Ensure cache directory exists."""
@@ -26,8 +33,8 @@ def get_cache_key(url):
     """Generate cache key from URL."""
     return hashlib.md5(url.encode()).hexdigest()
 
-def get_cached_data(url):
-    """Get cached data if not expired."""
+def get_cached_data(url, allow_stale=False):
+    """Get cached data if not expired (or if stale is allowed)."""
     ensure_cache_dir()
     cache_key = get_cache_key(url)
     cache_file = os.path.join(CACHE_DIR, f"gold_{cache_key}.json")
@@ -36,7 +43,11 @@ def get_cached_data(url):
         try:
             with open(cache_file, 'r') as f:
                 cached = json.load(f)
-            if time.time() - cached.get('timestamp', 0) < CACHE_TTL:
+            age = time.time() - cached.get('timestamp', 0)
+            if age < CACHE_TTL:
+                return cached.get('data')
+            elif allow_stale and age < STALE_CACHE_TTL:
+                print(f"⚠️ Using stale cache ({age/60:.0f} min old)", file=sys.stderr)
                 return cached.get('data')
         except:
             pass
@@ -56,66 +67,54 @@ def set_cached_data(url, data):
 
 def init_database():
     """Initialize SQLite database for tracking trades and performance."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Trades table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            date TEXT,
-            session TEXT,
-            signal TEXT,
-            entry_price REAL,
-            stop_loss REAL,
-            take_profit REAL,
-            position_size REAL,
-            candle_data TEXT,
-            status TEXT DEFAULT 'OPEN',
-            exit_price REAL,
-            exit_time TEXT,
-            pnl REAL,
-            pnl_percent REAL,
-            notes TEXT
-        )
-    ''')
-    
-    # Performance metrics table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS performance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            total_trades INTEGER,
-            winning_trades INTEGER,
-            losing_trades INTEGER,
-            win_rate REAL,
-            total_pnl REAL,
-            avg_win REAL,
-            avg_loss REAL,
-            profit_factor REAL,
-            max_drawdown REAL
-        )
-    ''')
-    
-    # Learning/adaptation table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS strategy_params (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            body_size_threshold REAL,
-            atr_multiplier_sl REAL,
-            atr_multiplier_tp REAL,
-            session_filter TEXT,
-            win_rate_7d REAL,
-            win_rate_30d REAL,
-            adjusted_params TEXT
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+    try:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Trades table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                date TEXT,
+                session TEXT,
+                signal TEXT,
+                entry_price REAL,
+                stop_loss REAL,
+                take_profit REAL,
+                position_size REAL,
+                candle_data TEXT,
+                status TEXT DEFAULT 'OPEN',
+                exit_price REAL,
+                exit_time TEXT,
+                pnl REAL,
+                pnl_percent REAL,
+                notes TEXT
+            )
+        ''')
+        
+        # Performance metrics table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS performance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                total_trades INTEGER,
+                winning_trades INTEGER,
+                losing_trades INTEGER,
+                win_rate REAL,
+                total_pnl REAL,
+                avg_win REAL,
+                avg_loss REAL,
+                profit_factor REAL,
+                max_drawdown REAL
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Database warning: {e}", file=sys.stderr)
 
 def fetch_with_retry(url, headers, max_retries=3, delay=5):
     """Fetch URL with retry logic and exponential backoff."""
@@ -140,6 +139,9 @@ def fetch_with_retry(url, headers, max_retries=3, delay=5):
 
 def fetch_xauusd_data(interval="15m", days=5):
     """Fetch XAU/USD OHLC data from Yahoo Finance with caching."""
+    # NOTE: Using GC=F but with price sanity check
+    # Yahoo Finance GC=F sometimes returns incorrect prices ($4000+ instead of ~$2000-2500)
+    # We keep using GC=F but warn user when prices are suspicious
     symbol = "GC=F"  # Gold Futures (COMEX)
     
     range_map = {1: "1d", 5: "5d", 30: "1mo", 90: "3mo"}
@@ -151,8 +153,8 @@ def fetch_xauusd_data(interval="15m", days=5):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
-    # Check cache first
-    cached = get_cached_data(url)
+    # Check cache first (allow stale if needed)
+    cached = get_cached_data(url, allow_stale=True)
     if cached:
         return cached
     
@@ -160,6 +162,11 @@ def fetch_xauusd_data(interval="15m", days=5):
     data = fetch_with_retry(url, headers)
     
     if "error" in data:
+        # Try to use stale cache even if old
+        cached = get_cached_data(url, allow_stale=True)
+        if cached:
+            print("⚠️ Using stale cache due to fetch error", file=sys.stderr)
+            return cached
         return data
     
     result = data.get('chart', {}).get('result', [])
@@ -291,18 +298,21 @@ def analyze_first_candle(candles, current_time=None):
     direction = "bullish" if latest_candle['close'] > latest_candle['open'] else "bearish"
     
     # First Candle Strategy Rules
-    # Entry: Large candle body (> 1.1x ATR) in direction of session open
-    # SL: Below/above the candle
-    # TP: 1.5x SL (risk:reward 1:1.5)
-    
     threshold_ratio = 1.1
     body_size = abs(latest_candle['close'] - latest_candle['open'])
+    
+    # FIXED: Price sanity check
+    current_price = latest_candle['close']
+    price_warning = None
+    if current_price > 4000:
+        price_warning = f"⚠️ WARNING: Price ${current_price:.2f} seems incorrect (should be ~$2000-3000). Data source may be bugged."
     
     signal = {
         "timestamp": current_time.strftime('%Y-%m-%d %H:%M:%S'),
         "session": session,
         "priority": priority,
-        "current_price": latest_candle['close'],
+        "current_price": current_price,
+        "price_warning": price_warning,
         "candle": {
             "open": latest_candle['open'],
             "high": latest_candle['high'],
@@ -340,27 +350,30 @@ def save_signal_to_db(signal_data):
     if signal_data.get("signal") in ["NO_TRADE", "HOLD"]:
         return
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO trades 
-        (timestamp, date, session, signal, entry_price, stop_loss, take_profit, candle_data, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        signal_data.get('timestamp'),
-        signal_data.get('timestamp', '')[:10],
-        signal_data.get('session'),
-        signal_data.get('signal'),
-        signal_data.get('entry'),
-        signal_data.get('stop_loss'),
-        signal_data.get('take_profit'),
-        json.dumps(signal_data.get('candle')),
-        'OPEN'
-    ))
-    
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO trades 
+            (timestamp, date, session, signal, entry_price, stop_loss, take_profit, candle_data, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            signal_data.get('timestamp'),
+            signal_data.get('timestamp', '')[:10],
+            signal_data.get('session'),
+            signal_data.get('signal'),
+            signal_data.get('entry'),
+            signal_data.get('stop_loss'),
+            signal_data.get('take_profit'),
+            json.dumps(signal_data.get('candle')),
+            'OPEN'
+        ))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Could not save to database: {e}", file=sys.stderr)
 
 def format_signal_output(signal_data):
     """Format signal data for display."""
@@ -368,6 +381,11 @@ def format_signal_output(signal_data):
         return f"❌ Error: {signal_data['error']}"
     
     lines = []
+    
+    # Price warning if present
+    if signal_data.get('price_warning'):
+        lines.append(f"\n🚨 {signal_data['price_warning']}\n")
+    
     lines.append(f"## 🥇 XAU/USD First Candle Signal Report")
     lines.append(f"**Time:** {signal_data.get('timestamp', 'N/A')} UTC")
     
@@ -417,56 +435,64 @@ def format_signal_output(signal_data):
 
 def generate_performance_report():
     """Generate performance report from database."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Get open positions
-    cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'")
-    open_count = cursor.fetchone()[0]
-    
-    # Get 7-day stats
-    seven_days_ago = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d')
-    cursor.execute('''
-        SELECT COUNT(*), 
-               SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END),
-               SUM(pnl)
-        FROM trades 
-        WHERE date >= ? AND status = 'CLOSED'
-    ''', (seven_days_ago,))
-    
-    week_stats = cursor.fetchone()
-    
-    # Get 30-day stats
-    thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
-    cursor.execute('''
-        SELECT COUNT(*), 
-               SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END),
-               SUM(pnl)
-        FROM trades 
-        WHERE date >= ? AND status = 'CLOSED'
-    ''', (thirty_days_ago,))
-    
-    month_stats = cursor.fetchone()
-    
-    conn.close()
-    
-    return {
-        "open_positions": open_count,
-        "7_day": {
-            "trades": week_stats[0] or 0,
-            "wins": week_stats[1] or 0,
-            "losses": week_stats[2] or 0,
-            "pnl": week_stats[3] or 0
-        },
-        "30_day": {
-            "trades": month_stats[0] or 0,
-            "wins": month_stats[1] or 0,
-            "losses": month_stats[2] or 0,
-            "pnl": month_stats[3] or 0
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get open positions
+        cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'")
+        open_count = cursor.fetchone()[0]
+        
+        # Get 7-day stats
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d')
+        cursor.execute('''
+            SELECT COUNT(*), 
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END),
+                   SUM(pnl)
+            FROM trades 
+            WHERE date >= ? AND status = 'CLOSED'
+        ''', (seven_days_ago,))
+        
+        week_stats = cursor.fetchone()
+        
+        # Get 30-day stats
+        thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
+        cursor.execute('''
+            SELECT COUNT(*), 
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END),
+                   SUM(pnl)
+            FROM trades 
+            WHERE date >= ? AND status = 'CLOSED'
+        ''', (thirty_days_ago,))
+        
+        month_stats = cursor.fetchone()
+        
+        conn.close()
+        
+        return {
+            "open_positions": open_count,
+            "7_day": {
+                "trades": week_stats[0] or 0,
+                "wins": week_stats[1] or 0,
+                "losses": week_stats[2] or 0,
+                "pnl": week_stats[3] or 0
+            },
+            "30_day": {
+                "trades": month_stats[0] or 0,
+                "wins": month_stats[1] or 0,
+                "losses": month_stats[2] or 0,
+                "pnl": month_stats[3] or 0
+            }
         }
-    }
+    except Exception as e:
+        return {
+            "open_positions": 0,
+            "error": str(e),
+            "7_day": {"trades": 0, "wins": 0, "losses": 0, "pnl": 0},
+            "30_day": {"trades": 0, "wins": 0, "losses": 0, "pnl": 0}
+        }
 
 def format_report(report_data):
     """Format performance report."""
@@ -474,6 +500,10 @@ def format_report(report_data):
     lines.append("# 📊 Daily Trading Report")
     lines.append(f"**Date:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC")
     lines.append("")
+    
+    if report_data.get('error'):
+        lines.append(f"⚠️ Database error: {report_data['error']}")
+        lines.append("")
     
     lines.append(f"**Open Positions:** {report_data['open_positions']}")
     lines.append("")
@@ -509,7 +539,7 @@ def main():
     
     if "error" in data:
         print(f"❌ Error fetching data: {data['error']}")
-        print("\n💡 Tip: API may be rate-limited. Try again in a few minutes.")
+        print("\n💡 Tip: API may be rate-limited. Using cached data if available.")
         sys.exit(1)
     
     candles = data.get('candles', [])

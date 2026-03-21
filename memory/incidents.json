@@ -1,0 +1,116 @@
+{
+  "2026-03-20": [
+    {
+      "timestamp": "2026-03-20T15:34:46.975249",
+      "category": "auto_fix_attempt",
+      "description": "API Connection Failed (6x) - SUCCESS",
+      "severity": "low",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.004239",
+      "category": "auto_fix_attempt",
+      "description": "Exchange Init Failed (6x) - SUCCESS",
+      "severity": "low",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.005051",
+      "category": "manual_fix_needed",
+      "description": "State Save Failed (4x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.006135",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (3x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.007110",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (1x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.008150",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (1x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-20T15:34:47.009504",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (1x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    }
+  ],
+  "2026-03-21": [
+    {
+      "timestamp": "2026-03-21T20:25:26.817710",
+      "category": "auto_fix_attempt",
+      "description": "API Connection Failed (6x) - SUCCESS",
+      "severity": "low",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-21T20:25:26.845267",
+      "category": "auto_fix_attempt",
+      "description": "Exchange Init Failed (6x) - SUCCESS",
+      "severity": "low",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-21T20:25:26.845729",
+      "category": "manual_fix_needed",
+      "description": "State Save Failed (4x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-21T20:25:26.847377",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (3x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    }
+  ]
+}

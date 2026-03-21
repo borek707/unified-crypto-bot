@@ -1,0 +1,26 @@
+# Micro-PassivBot Requirements
+# Python 3.12+
+
+# Core
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Performance
+numba>=0.59.0
+
+# Exchange connectivity
+ccxt>=4.2.0
+
+# Configuration
+pydantic>=2.6.0
+python-dotenv>=1.0.0
+
+# Optimization
+scipy>=1.12.0
+deap>=1.4.0
+
+# Technical Analysis
+pandas_ta>=0.3.14
+
+# Utilities
+tqdm>=4.66.0

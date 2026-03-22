@@ -253,7 +253,7 @@ def generate_daily_review():
         print("     Check incidents.json for details")
     
     print("\n  3. Monitor bot stability throughout the day")
-    print("     Use: ./check_bots.sh")
+    print("     Use: ./scripts/check_bots.sh")
 
 
 def main():

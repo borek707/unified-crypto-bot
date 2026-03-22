@@ -18,7 +18,7 @@ mkdir -p memory/logs
 # Start Low Risk Bot
 echo "Starting Low Risk Bot..."
 nohup python3 skills/passivbot-micro/scripts/unified_bot.py \
-    --config config_low_risk.json \
+    --config config/config_low_risk.json \
     --testnet \
     > memory/passivbot_logs/low/live.log 2>&1 &
 echo $! > memory/bot_low.pid
@@ -27,7 +27,7 @@ sleep 2
 # Start Medium Risk Bot
 echo "Starting Medium Risk Bot..."
 nohup python3 skills/passivbot-micro/scripts/unified_bot.py \
-    --config config_medium_risk.json \
+    --config config/config_medium_risk.json \
     --testnet \
     > memory/passivbot_logs/medium/live.log 2>&1 &
 echo $! > memory/bot_medium.pid
@@ -36,7 +36,7 @@ sleep 2
 # Start High Risk Bot
 echo "Starting High Risk Bot..."
 nohup python3 skills/passivbot-micro/scripts/unified_bot.py \
-    --config config_high_risk.json \
+    --config config/config_high_risk.json \
     --testnet \
     > memory/passivbot_logs/high/live.log 2>&1 &
 echo $! > memory/bot_high.pid

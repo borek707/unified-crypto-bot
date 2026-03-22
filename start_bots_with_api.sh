@@ -1,8 +1,10 @@
 #!/bin/bash
 # Start 3 paper trading bots WITH API KEYS
 
-export HYPERLIQUID_API_KEY="0xb64995df52ea75ca8497d61e9e7e3ff185bf6787"
-export HYPERLIQUID_SECRET="0x839358e35f7155dfc8468a1d9d7d8c305b944b39db94ab9014cc11281ba65c7d"
+if [ -z "$HYPERLIQUID_API_KEY" ] || [ -z "$HYPERLIQUID_SECRET" ]; then
+  echo "ERROR: Set HYPERLIQUID_API_KEY and HYPERLIQUID_SECRET in your .env or environment."
+  exit 1
+fi
 
 echo "======================================================================"
 echo "🚀 STARTING 3 LIVE PAPER TRADING BOTS"

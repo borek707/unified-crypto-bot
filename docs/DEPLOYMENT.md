@@ -56,13 +56,13 @@ pytest tests/
 
 ```bash
 # Terminal 1: Low risk bot
-python3 src/bots/unified_bot.py --config config/low_risk.json --testnet
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_low_risk.json --testnet
 
 # Terminal 2: Medium risk bot
-python3 src/bots/unified_bot.py --config config/medium_risk.json --testnet
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_medium_risk.json --testnet
 
 # Terminal 3: High risk bot
-python3 src/bots/unified_bot.py --config config/high_risk.json --testnet
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_high_risk.json --testnet
 ```
 
 Or use tmux:
@@ -119,7 +119,7 @@ User=trading
 WorkingDirectory=/home/trading/unified-crypto-bot
 Environment=PYTHONPATH=/home/trading/.local/lib/python3.10/site-packages
 EnvironmentFile=/home/trading/unified-crypto-bot/.env
-ExecStart=/usr/bin/python3 /home/trading/unified-crypto-bot/src/bots/unified_bot.py --config /home/trading/unified-crypto-bot/config/low_risk.json --live
+ExecStart=/usr/bin/python3 /home/trading/unified-crypto-bot/skills/passivbot-micro/scripts/unified_bot.py --config /home/trading/unified-crypto-bot/config_low_risk.json --live
 Restart=always
 RestartSec=10
 
@@ -173,7 +173,7 @@ COPY config/ ./config/
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python3", "src/bots/unified_bot.py", "--config", "config/low_risk.json", "--live"]
+CMD ["python3", "skills/passivbot-micro/scripts/unified_bot.py", "--config", "config_low_risk.json", "--live"]
 ```
 
 ```bash
@@ -202,7 +202,7 @@ services:
     volumes:
       - ./memory:/app/memory
       - ./config/low_risk.json:/app/config/config.json:ro
-    command: ["python3", "src/bots/unified_bot.py", "--config", "config/config.json", "--live"]
+    command: ["python3", "skills/passivbot-micro/scripts/unified_bot.py", "--config", "config_low_risk.json", "--live"]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -216,8 +216,8 @@ services:
     env_file: .env
     volumes:
       - ./memory:/app/memory
-      - ./config/medium_risk.json:/app/config/config.json:ro
-    command: ["python3", "src/bots/unified_bot.py", "--config", "config/config.json", "--live"]
+      - ./config_medium_risk.json:/app/config_medium_risk.json:ro
+    command: ["python3", "skills/passivbot-micro/scripts/unified_bot.py", "--config", "config_medium_risk.json", "--live"]
     restart: unless-stopped
 
   bot-high:
@@ -226,8 +226,8 @@ services:
     env_file: .env
     volumes:
       - ./memory:/app/memory
-      - ./config/high_risk.json:/app/config/config.json:ro
-    command: ["python3", "src/bots/unified_bot.py", "--config", "config/config.json", "--live"]
+      - ./config_high_risk.json:/app/config_high_risk.json:ro
+    command: ["python3", "skills/passivbot-micro/scripts/unified_bot.py", "--config", "config_high_risk.json", "--live"]
     restart: unless-stopped
 
   cron:

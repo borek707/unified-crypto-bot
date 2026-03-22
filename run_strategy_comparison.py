@@ -44,8 +44,9 @@ for i, strat in enumerate(strategies, 1):
     
     # Run backtest
     env = os.environ.copy()
-    env['EXCHANGE_API_KEY'] = '0xb64995df52ea75ca8497d61e9e7e3ff185bf6787'
-    env['EXCHANGE_API_SECRET'] = '0x839358e35f7155dfc8468a1d9d7d8c305b944b39db94ab9014cc11281ba65c7d'
+    # Keys must be set in the environment (e.g. via .env)
+    if not env.get('EXCHANGE_API_KEY') or not env.get('EXCHANGE_API_SECRET'):
+        raise EnvironmentError('Set EXCHANGE_API_KEY and EXCHANGE_API_SECRET in your .env or environment before running.')
     
     try:
         result = subprocess.run(

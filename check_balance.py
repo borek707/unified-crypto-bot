@@ -4,8 +4,11 @@ import asyncio
 import ccxt.async_support as ccxt
 
 async def check():
-    wallet = "0xb64995df52ea75ca8497d61e9e7e3ff185bf6787"
-    secret = "0x839358e35f7155dfc8468a1d9d7d8c305b944b39db94ab9014cc11281ba65c7d"
+    import os
+    wallet = os.environ.get('HYPERLIQUID_API_KEY') or os.environ.get('EXCHANGE_API_KEY')
+    secret = os.environ.get('HYPERLIQUID_SECRET') or os.environ.get('EXCHANGE_API_SECRET')
+    if not wallet or not secret:
+        raise EnvironmentError('Set HYPERLIQUID_API_KEY and HYPERLIQUID_SECRET in your .env or environment.')
     
     ex = ccxt.hyperliquid({
         'apiKey': wallet,

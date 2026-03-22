@@ -1,50 +1,54 @@
 # Unified Crypto Trading Bot
 
-Professional-grade automated trading system with adaptive strategies (LONG/SHORT/SIDEWAYS) for cryptocurrency markets.
+Automated trading bot with adaptive strategy (LONG/SHORT/SIDEWAYS) for BTC on Hyperliquid exchange.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🎯 Features
 
-- **Adaptive Strategy Switching**: Automatically detects market trends and switches between:
+- **Adaptive strategy switching** based on 48h trend detection:
   - 📈 **UPTREND**: Long Grid Strategy
   - 📉 **DOWNTREND**: Short 3x Leverage
   - ➡️ **SIDEWAYS**: Grid + DCA Hybrid
-  
-- **Multi-Bot Architecture**: Run 3 risk profiles simultaneously (Low/Medium/High)
-- **Risk Management**: Built-in position sizing, stop-loss, take-profit, liquidation protection
-- **Paper Trading**: Test strategies without real money
-- **Production Ready**: Docker, monitoring, logging, alerting
+
+- **Circuit Breaker v3.0**: stops trading on excessive losses (daily loss limit / max drawdown / consecutive losses)
+- **Technical Analysis module**: custom indicators (EMA, RSI, ADX, Bollinger Bands, Choppiness Index, VWAP, SuperTrend)
+- **Backtest Engine**: historical simulation with PnL metrics and equity curve
+- **Multi-Bot**: 3 risk profiles running simultaneously (Low / Medium / High)
+- **Paper Trading**: test without real funds
 
 ## 📁 Repository Structure
 
 ```
 .
-├── src/
-│   ├── bots/              # Trading bot implementations
-│   │   └── unified_bot.py # Main adaptive bot
-│   ├── strategies/        # Trading strategies
-│   │   ├── long_grid.py
-│   │   ├── short_3x.py
-│   │   └── sideways_dca.py
-│   └── utils/             # Utilities
-│       ├── rate_limiter.py
-│       └── price_fetcher.py
-├── config/                # Configuration files
-│   ├── low_risk.json
-│   ├── medium_risk.json
-│   └── high_risk.json
-├── infra/                 # Infrastructure as Code
-│   ├── docker/
-│   ├── k8s/
-│   └── terraform/
-├── scripts/               # Deployment & management scripts
-├── docs/                  # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── DEPLOYMENT.md
-│   └── OPERATIONS.md
-└── tests/                 # Test suite
+├── skills/passivbot-micro/
+│   ├── CHANGELOG.md                       # Development history
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── unified_bot.py                 # Main bot (Circuit Breaker v3.0)
+│       ├── technical_analysis.py          # TA indicators module
+│       ├── enhanced_backtest.py           # Backtest engine
+│       └── enhanced_unified_bot.py        # Experimental variant
+├── config_low_risk.json                   # 2x leverage, 5% daily limit
+├── config_medium_risk.json                # 3x leverage, 10% daily limit
+├── config_high_risk.json                  # 5x leverage, 20% daily limit
+├── config_paper.json                      # Paper trading ($12 capital)
+├── config_best.json                       # Optimised parameters
+├── bot_monitor.py                         # Single bot monitor
+├── multi_bot_monitor.py                   # Multi-bot monitor
+├── run_3bots_paper.py                     # Launch 3 paper bots
+├── rate_limiter.py                        # API rate limiter
+├── cron_runner_v2.py                      # Price feed cron job
+├── daily_report.py                        # Daily PnL report
+├── scripts/
+│   ├── start_bots.sh
+│   ├── stop_bots.sh
+│   ├── restart_bots.sh
+│   └── status.sh
+└── docs/
+    ├── ARCHITECTURE.md
+    ├── DEPLOYMENT.md
+    └── OPERATIONS.md
 ```
 
 ## 🚀 Quick Start
@@ -52,112 +56,73 @@ Professional-grade automated trading system with adaptive strategies (LONG/SHORT
 ### Prerequisites
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install -y python3.10 python3-pip sqlite3 git
-
-# Python dependencies
-pip install ccxt pandas numpy aiohttp python-dotenv
+pip install -r requirements.txt
 ```
 
-### Installation
-
-```bash
-# Clone repository
-git clone <repo-url>
-cd unified-crypto-bot
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your API keys
-
-# Initialize database
-python3 scripts/init_db.py
-
-# Start bots
-./scripts/start_bots.sh
-```
+Key dependencies: `ccxt`, `numpy`, `aiohttp`, `python-dotenv`
 
 ### Configuration
 
-Create your config file:
+```bash
+cp .env.example .env
+# Set HYPERLIQUID_API_KEY and HYPERLIQUID_SECRET
+```
 
-```json
-{
-  "initial_capital": 100.0,
-  "trend_lookback": 48,
-  "trend_threshold": 0.05,
-  "exchange": "hyperliquid",
-  "symbol": "BTC/USDC:USDC",
-  "testnet": true
-}
+### Paper Trading (testnet)
+
+```bash
+# Single bot, paper mode
+python3 skills/passivbot-micro/scripts/unified_bot.py --testnet
+
+# With specific risk profile
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_low_risk.json --testnet
+
+# 3 bots simultaneously
+python3 run_3bots_paper.py
+```
+
+### Live Trading
+
+```bash
+# Set testnet: false in config and ensure API keys are set
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_medium_risk.json --live
+```
+
+### Bot Management
+
+```bash
+./scripts/start_bots.sh    # Start
+./scripts/status.sh        # Status
+./scripts/stop_bots.sh     # Stop
+./scripts/restart_bots.sh  # Restart
+```
+
+## 📊 Risk Profiles
+
+| Profile | SHORT Leverage | Daily Loss Limit | Trend Lookback | Grid Spacing |
+|---------|---------------|-----------------|----------------|--------------|
+| Low     | 2x            | 5%              | 48h            | 1.5%         |
+| Medium  | 3x            | 10%             | 48h            | 1.0%         |
+| High    | 5x            | 20%             | 24h            | 0.5%         |
+
+## 🧪 Backtest
+
+```bash
+python3 skills/passivbot-micro/scripts/enhanced_backtest.py
 ```
 
 ## 🏗️ Architecture
 
-```mermaid
-graph TD
-    A[Price Feed] --> B{Trend Detection}
-    B -->|UPTREND| C[Long Grid Strategy]
-    B -->|DOWNTREND| D[Short 3x Strategy]
-    B -->|SIDEWAYS| E[Grid + DCA Strategy]
-    C --> F[Position Manager]
-    D --> F
-    E --> F
-    F --> G[Exchange API]
-    F --> H[Database]
-    F --> I[Monitoring]
-```
-
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design.
 
-## 📊 Monitoring
+## 🚢 Deployment
 
-```bash
-# View live logs
-tail -f memory/passivbot_logs/*/live.log
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for VPS and Docker setup.
 
-# Daily report
-python3 scripts/daily_report.py
+## 📋 Operations
 
-# Bot status
-./scripts/status.sh
-```
-
-## 🔧 Infrastructure
-
-### Docker
-
-```bash
-cd infra/docker
-docker-compose up -d
-```
-
-### Kubernetes
-
-```bash
-kubectl apply -f infra/k8s/
-```
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full infrastructure guide.
-
-## 🧪 Testing
-
-```bash
-# Run backtests
-python3 tests/backtest.py --config config/low_risk.json
-
-# Paper trading
-python3 src/bots/unified_bot.py --config config/paper.json --testnet
-
-# Unit tests
-pytest tests/
-```
-
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) file.
+Daily procedures and incident response in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## 🙏 Credits
 
-Built with [ccxt](https://github.com/ccxt/ccxt) for exchange connectivity.
+Exchange connectivity: [ccxt](https://github.com/ccxt/ccxt)

@@ -11,8 +11,10 @@ echo ""
 echo "Konfiguracja: $12, grid trading, BTC/USDC"
 echo ""
 
-export EXCHANGE_API_KEY="0xb64995df52ea75ca8497d61e9e7e3ff185bf6787"
-export EXCHANGE_API_SECRET="0x839358e35f7155dfc8468a1d9d7d8c305b944b39db94ab9014cc11281ba65c7d"
+if [ -z "$EXCHANGE_API_KEY" ] || [ -z "$EXCHANGE_API_SECRET" ]; then
+  echo "ERROR: Set EXCHANGE_API_KEY and EXCHANGE_API_SECRET in your .env or environment."
+  exit 1
+fi
 export EXCHANGE_TYPE="hyperliquid"
 
 cd ~/.openclaw/workspace/skills/passivbot-pro

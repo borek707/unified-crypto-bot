@@ -9,13 +9,14 @@
 ./scripts/status.sh
 
 # 2. Review overnight activity
-tail -50 memory/passivbot_logs/*/live.log | grep -E "(ORDER|TRADE|position)"
+grep -E "(OPEN|CLOSE|TREND CHANGE|CIRCUIT)" memory/bot_dashboard.html 2>/dev/null || \
+  grep -E "(OPEN|CLOSE|TREND CHANGE|CIRCUIT)" ~/.crypto_bot/logs/unified_bot.log | tail -50
 
 # 3. Check daily report
-python3 scripts/daily_report.py
+python3 daily_report.py
 
-# 4. Verify database
-sqlite3 memory/crypto_prices.db "SELECT COUNT(*) FROM crypto_prices WHERE date(timestamp) = date('now');"
+# 4. Check paper trading results
+cat memory/paper_trading_results.json | python3 -m json.tool | tail -30
 ```
 
 ### Health Indicators
@@ -33,19 +34,13 @@ sqlite3 memory/crypto_prices.db "SELECT COUNT(*) FROM crypto_prices WHERE date(t
 ### Every Monday
 
 ```bash
-# 1. Review weekly performance
-python3 scripts/weekly_report.py
+# 1. Review weekly performance (manual, no automated script)
+cat memory/paper_trading_results.json | python3 -m json.tool
 
 # 2. Archive old logs
-find memory/logs -name "*.log" -mtime +7 -exec gzip {} \;
+find ~/.crypto_bot/logs -name "*.log" -mtime +7 -exec gzip {} \;
 
-# 3. Database optimization
-sqlite3 memory/crypto_prices.db "VACUUM;"
-
-# 4. Backup verification
-ls -lh /backups/crypto-bot/ | tail -5
-
-# 5. Update dependencies
+# 3. Update dependencies
 pip install --upgrade -r requirements.txt
 ```
 
@@ -129,19 +124,20 @@ echo '{}' > .api_rate_state.json
 # No manual action needed - auto-resolves
 ```
 
-### Level 3: Large Loss (->5% in 1 hour)
+### Level 3: Large Loss (>5% in 1 hour) / Circuit Breaker Active
 
 ```bash
 # Emergency stop
 ./scripts/stop_bots.sh
 
-# Review positions
-sqlite3 memory/trades.db "SELECT * FROM trades ORDER BY timestamp DESC LIMIT 10;"
+# Check if circuit breaker fired
+grep "CIRCUIT BREAKER" ~/.crypto_bot/logs/unified_bot.log | tail -5
 
-# Check market conditions
-python3 scripts/market_analysis.py
+# Check current bot state
+cat memory/bot_state.json | python3 -m json.tool
 
-# Decision: Restart or wait
+# Decision: Restart or wait for cooldown
+# Circuit Breaker auto-resets after 60 min cooldown
 ```
 
 ### Level 4: Exchange Issues
@@ -162,42 +158,41 @@ watch -n 300 './scripts/status.sh'
 ### Adding a New Bot
 
 ```bash
-# 1. Create config
-cp config/low_risk.json config/custom.json
-nano config/custom.json
+# 1. Create config based on existing profile
+cp config_medium_risk.json config_custom.json
+nano config_custom.json
 
 # 2. Test in paper mode
-python3 src/bots/unified_bot.py --config config/custom.json --testnet
+python3 skills/passivbot-micro/scripts/unified_bot.py --config config_custom.json --testnet
 
-# 3. Add to startup script
-echo "nohup python3 src/bots/unified_bot.py --config config/custom.json --live >> logs/custom.log 2>&1 &" >> scripts/start_bots.sh
-
-# 4. Start
-./scripts/start_bots.sh
+# 3. Start live
+nohup python3 skills/passivbot-micro/scripts/unified_bot.py --config config_custom.json --live \
+  >> ~/.crypto_bot/logs/custom.log 2>&1 &
 ```
 
 ### Modifying Strategy Parameters
 
 1. **Edit config file**:
    ```bash
-   nano config/low_risk.json
+   nano config_low_risk.json
    ```
 
 2. **Validate JSON**:
    ```bash
-   python3 -m json.tool config/low_risk.json > /dev/null && echo "Valid JSON"
+   python3 -m json.tool config_low_risk.json > /dev/null && echo "Valid JSON"
    ```
 
 3. **Restart bot**:
    ```bash
    pkill -f "unified_bot.py.*low_risk"
    sleep 2
-   nohup python3 src/bots/unified_bot.py --config config/low_risk.json --live >> logs/low.log 2>&1 &
+   nohup python3 skills/passivbot-micro/scripts/unified_bot.py \
+     --config config_low_risk.json --live >> ~/.crypto_bot/logs/low.log 2>&1 &
    ```
 
 4. **Monitor for 1 hour**:
    ```bash
-   tail -f logs/low.log | grep -E "(ERROR|position|ORDER)"
+   tail -f ~/.crypto_bot/logs/low.log | grep -E "(ERROR|OPEN|CLOSE|CIRCUIT|TREND)"
    ```
 
 ## Log Analysis
@@ -206,16 +201,19 @@ echo "nohup python3 src/bots/unified_bot.py --config config/custom.json --live >
 
 ```bash
 # Find all trades
-grep "OPEN\|CLOSE" memory/passivbot_logs/*/live.log
+grep "OPEN\|CLOSE" ~/.crypto_bot/logs/unified_bot.log
 
 # Find errors
-grep "ERROR" memory/passivbot_logs/*/live.log | tail -20
+grep "ERROR" ~/.crypto_bot/logs/unified_bot.log | tail -20
 
 # Check trend changes
-grep "TREND CHANGE" memory/passivbot_logs/*/live.log
+grep "TREND CHANGE" ~/.crypto_bot/logs/unified_bot.log
+
+# Check circuit breaker events
+grep "CIRCUIT BREAKER" ~/.crypto_bot/logs/unified_bot.log
 
 # Rate limit hits
-grep "Rate limit" memory/logs/api_calls.log
+grep "Rate limit" ~/.crypto_bot/logs/unified_bot.log
 ```
 
 ### Performance Metrics

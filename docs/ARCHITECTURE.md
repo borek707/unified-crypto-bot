@@ -6,9 +6,9 @@ The Unified Crypto Trading Bot is a multi-strategy automated trading system desi
 
 ## Core Components
 
-### 1. Unified Bot (`src/bots/unified_bot.py`)
+### 1. Unified Bot (`skills/passivbot-micro/scripts/unified_bot.py`)
 
-Main trading engine with adaptive strategy selection.
+Main trading engine with adaptive strategy selection and integrated Circuit Breaker.
 
 #### State Machine
 
@@ -58,7 +58,21 @@ def detect_trend(prices: List[float]) -> Trend:
         return "sideways"
 ```
 
-### 2. Strategy Implementations
+### 2. Circuit Breaker (`CircuitBreaker` class)
+
+Protects capital by halting trading when any of three limits are breached:
+
+| Limit | Default | Config key |
+|-------|---------|------------|
+| Daily loss | 5% | `max_daily_loss_pct` |
+| Max drawdown | 15% | `max_drawdown_pct` |
+| Consecutive losses | 5 | `max_consecutive_losses` |
+
+After activation, trading is suspended for `circuit_cooldown_minutes` (default: 60 min) then automatically resets.
+
+Additionally, `_check_exposure_limit()` blocks new entries when total open exposure exceeds `max_total_exposure_pct` (default: 50%).
+
+### 3. Strategy Implementations
 
 #### Long Grid Strategy (UPTREND)
 
@@ -92,7 +106,34 @@ Take Profit: 1% markup
 Stop Loss: Below range low - 0.5%
 ```
 
-### 3. Price Feed System
+### 4. Technical Analysis Module (`skills/passivbot-micro/scripts/technical_analysis.py`)
+
+648-line module with zero external TA dependencies (pure numpy/pandas).
+
+**Core indicators:** EMA, SMA, RSI, ATR, Bollinger Bands, ADX, MACD
+
+**Sideways-specific indicators:**
+- `Choppiness Index` — consolidation detection (CI > 61.8 = sideways)
+- `Keltner Channels` — channels for grid level placement
+- `TTM Squeeze` — breakout anticipation
+- `Volume Profile` — support/resistance from volume clusters
+- `VWAP` — volume-weighted average price
+- `SuperTrend` — trend direction filter
+
+**Key classes:**
+- `SidewaysAnalyzer` — multi-indicator sideways detection + optimal grid params
+
+### 5. Backtest Engine (`skills/passivbot-micro/scripts/enhanced_backtest.py`)
+
+512-line engine integrating Technical Analysis for historical simulation.
+
+**Metrics:** Win Rate, Profit Factor, Sharpe Ratio, Max Drawdown, Equity Curve
+
+```bash
+python3 skills/passivbot-micro/scripts/enhanced_backtest.py
+```
+
+### 6. Price Feed System
 
 Multi-source fallback architecture:
 
@@ -110,7 +151,7 @@ graph LR
     F -->|API| G[Coinpaprika]
 ```
 
-### 4. Risk Management
+### 7. Risk Management
 
 #### Position Sizing
 
@@ -136,7 +177,7 @@ if current_price >= liq_buffer:
     emergency_close()
 ```
 
-### 5. Database Schema
+### 8. Database Schema
 
 ```sql
 -- Price history (populated by cron)
@@ -203,11 +244,11 @@ CREATE TABLE bot_state (
 
 Three independent bot instances with shared database but isolated positions:
 
-| Bot | Risk | Leverage | Position Size | Purpose |
-|-----|------|----------|---------------|---------|
-| Low | 5% daily | 1x max | 10% | Conservative, steady growth |
-| Medium | 10% daily | 2x max | 10% | Balanced risk/reward |
-| High | 15% daily | 3x max | 15% | Aggressive, higher variance |
+| Bot | SHORT Leverage | Daily Loss Limit | Trend Lookback | Grid Spacing |
+|-----|---------------|-----------------|----------------|--------------|
+| Low | 2x | 5% | 48h | 1.5% |
+| Medium | 3x | 10% | 48h | 1.0% |
+| High | 5x | 20% | 24h | 0.5% |
 
 Each bot:
 - Has separate config file

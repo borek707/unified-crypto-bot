@@ -35,10 +35,16 @@ memory/**/*.db
 __pycache__/
 *.cache
 
-# Environment
+# Environment - NEVER commit these
 .env
 .env.local
 .env.production
+.env.*
+!.env.example
+
+# Backups with potential secrets
+*.backup.*
+*.bak
 
 # OS
 .DS_Store

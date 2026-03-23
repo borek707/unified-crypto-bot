@@ -68,4 +68,10 @@ Thumbs.db
 # Keep directory structure
 !memory/.gitkeep
 !memory/logs/.gitkeep
-!memory/passivbot_logs/.gitkeep
+!memory/passivbot_logs/.gitkeepSOUL.md
+AGENTS.md
+IDENTITY.md
+USER.md
+MEMORY.md
+HEARTBEAT.md
+BOOTSTRAP.md

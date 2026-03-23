@@ -522,3 +522,99 @@ Najbardziej praktyczne trzy kroki na teraz:
 3. Dodac ADX oraz turbulence.
 
 To jest najlepszy stosunek pracy do efektu.
+
+## Co Zostalo Zrobione: Logika Krok Po Kroku
+
+Ponizej jest realny przebieg prac, tak jak byly wykonywane iteracyjnie.
+
+### Krok 1: Audyt kodu i architektury
+
+1. Przeczytano aktualna logike live bota.
+2. Sprawdzono stan dokumentacji i historycznych wynikow.
+3. Zweryfikowano brak gotowego, wiarygodnego backtestu 1:1 dla aktualnej logiki.
+
+Wniosek:
+
+1. Najpierw trzeba bylo zbudowac i domknac backtest, dopiero potem stroic strategie.
+
+### Krok 2: Budowa nowego backtestu unified
+
+1. Dodano [scripts/backtest_unified.py](scripts/backtest_unified.py).
+2. Zaimplementowano podstawowe strategie i metryki.
+3. Odpalono pierwsze testy 1y i zebrano baseline.
+
+Wniosek:
+
+1. Wyniki ujawnily slabosc long-side i problemy klasyfikacji regime.
+
+### Krok 3: Pierwsza iteracja poprawek strategii
+
+1. Dodano porownania wariantow (v1/v2/v3).
+2. Przetestowano m.in. bardziej defensywne ustawienia i ograniczenia long-grid.
+3. Po kazdej zmianie odpalano test porownawczy 1y.
+
+Wniosek:
+
+1. Sam tuning parametrow nie wystarczal, potrzebna byla zmiana logiki rynku.
+
+### Krok 4: Przebudowa klasyfikatora rynku
+
+1. Przejscie z prostego podejscia na 5 stanow regime:
+   - strong_uptrend,
+   - pullback_uptrend,
+   - sideways,
+   - bear_rally,
+   - strong_downtrend.
+2. Dodanie multi-horizon kontekstu (48h/7d/14d/30d + EMA baseline).
+3. Synchronizacja tej logiki miedzy live i backtestem.
+4. Testy: 1y, potem 2y, potem 3y.
+
+Wniosek:
+
+1. Byla wyrazna poprawa klasyfikacji, ale dlugi horyzont nadal przegrywal z HODL.
+
+### Krok 5: Warstwa trend-following
+
+1. Dodano osobny typ pozycji trend_follow.
+2. Dodano hard stop i trailing stop.
+3. Wpięto zarzadzanie trend_follow do routingu live i backtestu.
+4. Po wdrozeniu odpalono pelne porownania 1y/2y/3y.
+
+Wniosek:
+
+1. Technicznie dziala poprawnie, ale wynik dlugoterminowy nadal wymaga poprawy.
+
+### Krok 6: Domykanie fazy 1 (backtest parity)
+
+1. Uporzadkowano typy pozycji i wyjscia.
+2. Poprawiono logike Circuit Breakera i reset dzienny.
+3. Dodano raportowanie per-strategy i per-regime.
+4. Dodano limity ekspozycji i poprawiono rozliczanie fee.
+5. Testy regresyjne po kazdej wiekszej poprawce.
+
+Wniosek:
+
+1. Backtest stal sie bardziej wiarygodny jako narzedzie decyzyjne.
+
+### Krok 7: Rozszerzenie roadmapy o RL tracks
+
+1. Dodano tor PPO (offline-first, gate przed live).
+2. Dodano tor A2C jako defensywny agent dla choppy/sideways.
+3. Ustalono routing przez walidacje metryk, a nie przez twarde IF/ELSE dla modeli RL.
+
+Wniosek:
+
+1. RL jest traktowany jako kolejny etap po stabilizacji rule-based core i po przejsciu bramek metryk.
+
+### Jak wyglada cykl pracy (standard)
+
+Kazda iteracja byla realizowana wedlug tego samego schematu:
+
+1. implementacja jednej konkretnej zmiany,
+2. szybka walidacja techniczna,
+3. backtest porownawczy,
+4. analiza metryk i breakdownu,
+5. decyzja: zostawic, poprawic albo wycofac,
+6. dopiero potem kolejny krok.
+
+To podejscie jest rekomendowane rowniez dalej, szczegolnie przy fazie 2 i torach PPO/A2C.

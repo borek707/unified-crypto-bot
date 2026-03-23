@@ -175,6 +175,7 @@ class UnifiedConfig:
     # === TREND DETECTION ===
     trend_lookback: int = 48  # 48 hours
     trend_threshold: float = 0.05  # 5%
+    use_market_classifier: bool = False  # Enable to use ADX-based 5-state classifier
     
     # === DOWNTREND: SHORT 3x ===
     short_leverage: float = 3.0
@@ -352,7 +353,19 @@ class UnifiedBot:
         self,
         prices: List[float]
     ) -> Literal['strong_uptrend', 'pullback_uptrend', 'sideways', 'bear_rally', 'strong_downtrend']:
-        """Classify the market using 48h, 7d, 14d and 30d context on hourly data."""
+        """
+        Classify the market using 48h, 7d, 14d and 30d context on hourly data.
+        Optionally uses MarketClassifier (ADX-based) when enabled.
+        """
+        # Phase 2: Use MarketClassifier if enabled and available
+        if self.config.use_market_classifier and self.market_classifier is not None and len(prices) >= 100:
+            classification = self.market_classifier.classify(prices)
+            if classification != getattr(self, '_last_classification', None):
+                logger.info(f"📊 Market classified (ADX): {classification}")
+                self._last_classification = classification
+            return classification
+        
+        # Default: Piotr's EMA-based classification
         hourly_prices = self._to_hourly_prices(prices)
         if len(hourly_prices) < 48:
             return self.current_trend

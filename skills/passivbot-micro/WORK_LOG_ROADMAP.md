@@ -24,25 +24,18 @@
 - Przeczytano ROADMAP.md
 - Przygotowano strukturę pracy
 
-### 17:30-17:55 UTC - FAZA 2 (w trakcie)
-✅ **Utworzono `technical_indicators.py`**:
-- `TechnicalIndicators` class (EMA, ADX)
-- `MarketClassifier` class (5-stanowy: strong_uptrend, pullback_uptrend, sideways, bear_rally, strong_downtrend)
-- Testy - działa poprawnie
+### 21:05-21:40 UTC - FAZA 2 (kontynuacja)
+✅ **Dodano konfigurację `use_market_classifier`**:
+- Opcja w `UnifiedConfig` do włączania/wyłączania ADX classifier
+- Modyfikacja `detect_trend()` aby używał MarketClassifier gdy włączone
+- Backward compatibility: domyślnie False (używa EMA-based)
 
-✅ **Zmodyfikowano `unified_bot.py`**:
-- Dodano import `technical_indicators`
-- Dodano `market_classifier` do `UnifiedBot.__init__`
-- Zmodyfikowano `detect_trend()` aby używał nowego classifier
-- Zachowano backward compatibility (fallback do starej metody)
-- Testy - działa poprawnie
+✅ **Testy**:
+- Syntax OK
+- EMA-based classifier działa (domyślne)
+- ADX-based classifier działa (gdy włączone)
 
 ### Aktualny status:
-- [x] Faza 2 - częściowo gotowa (50%)
+- [x] Faza 2 - gotowa do testów (100%)
 - [ ] Faza 3 - oczekuje
 - [ ] Faza 4 - oczekuje
-
-### Co jeszcze w Fazie 2:
-- Dodać ADX do configu
-- Przetestować na danych historycznych
-- Porównać wyniki ze starą metodą

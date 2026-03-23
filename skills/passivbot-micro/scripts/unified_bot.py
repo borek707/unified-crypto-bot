@@ -26,6 +26,14 @@ from pathlib import Path
 from typing import Optional, Dict, List, Literal, Tuple
 import time
 
+# Import technical indicators (optional enhancement)
+try:
+    from technical_indicators import MarketClassifier
+    TECHNICAL_INDICATORS_AVAILABLE = True
+except ImportError:
+    TECHNICAL_INDICATORS_AVAILABLE = False
+    MarketClassifier = None
+
 # Setup logging - use environment variable or default to home directory
 LOG_DIR = Path(os.getenv('BOT_LOG_DIR', Path.home() / '.crypto_bot' / 'logs'))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -263,6 +271,14 @@ class UnifiedBot:
         # Balance tracking for CB
         self.current_balance = config.initial_capital
         self.peak_balance = config.initial_capital
+        
+        # Market Classifier (optional enhancement)
+        if TECHNICAL_INDICATORS_AVAILABLE and MarketClassifier is not None:
+            self.market_classifier = MarketClassifier(config)
+            logger.info("📊 Market Classifier initialized (5-state)")
+        else:
+            self.market_classifier = None
+            logger.info("⚠️ Market Classifier not available")
         
         logger.info("🤖 Unified Bot initialized (with Circuit Breaker v3.0)")
     

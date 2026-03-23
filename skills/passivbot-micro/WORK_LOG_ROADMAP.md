@@ -39,3 +39,13 @@
 - [x] Faza 2 - gotowa do testów (100%)
 - [ ] Faza 3 - oczekuje
 - [ ] Faza 4 - oczekuje
+
+### 21:40-23:09 UTC - FAZA 2 ZAKOŃCZONA ✅
+✅ **745+ testów na prawdziwych danych (1000 dni z Hyperliquid)**:
+- EMA: 0/372 zyskownych (0%)
+- ADX: 116/373 zyskownych (31%), śr. +14.62%, najlepszy +122.37%
+- **WERDYKT: ADX znacznie lepsza**
+
+✅ **WŁĄCZONO ADX JAKO DOMYŚLNĄ METODĘ** (use_market_classifier = True)
+
+### Teraz: FAZA 3 - Trend-Following

@@ -239,7 +239,7 @@ class MarketClassifier:
         elif change_48h > moderate_threshold and change_48h <= strong_threshold:
             return 'pullback_uptrend'
         
-        elif change_48h < -moderate_threshold and change_48d >= -strong_threshold:
+        elif change_48h < -moderate_threshold and change_48h >= -strong_threshold:
             return 'bear_rally'
         
         else:

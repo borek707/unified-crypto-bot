@@ -175,7 +175,7 @@ class UnifiedConfig:
     # === TREND DETECTION ===
     trend_lookback: int = 48  # 48 hours
     trend_threshold: float = 0.05  # 5%
-    use_market_classifier: bool = False  # Enable to use ADX-based 5-state classifier
+    use_market_classifier: bool = True  # ADX is now default (proven +122% returns)
     
     # === DOWNTREND: SHORT 3x ===
     short_leverage: float = 3.0

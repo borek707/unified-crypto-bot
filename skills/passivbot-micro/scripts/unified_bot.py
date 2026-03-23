@@ -34,6 +34,15 @@ except ImportError:
     TECHNICAL_INDICATORS_AVAILABLE = False
     MarketClassifier = None
 
+# Import risk management (Phase 4)
+try:
+    from risk_management import TurbulenceIndex, SlippageModel, WalkForwardRobustness
+    RISK_MGMT_AVAILABLE = True
+except ImportError:
+    RISK_MGMT_AVAILABLE = False
+    TurbulenceIndex = None
+    SlippageModel = None
+
 # Setup logging - use environment variable or default to home directory
 LOG_DIR = Path(os.getenv('BOT_LOG_DIR', Path.home() / '.crypto_bot' / 'logs'))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -200,6 +209,12 @@ class UnifiedConfig:
     trend_follow_reentry_enabled: bool = True  # Phase 3: Enable re-entry
     trend_follow_reentry_cooldown_hours: int = 24  # Wait 24h before re-entry
     use_ppo_trend_following: bool = True  # Phase 3: Use PPO for trend-following
+    
+    # === RISK MANAGEMENT (Phase 4) ===
+    turbulence_lookback: int = 30
+    turbulence_threshold: float = 1.5
+    base_slippage_bps: float = 5.0  # 5 basis points
+    
     long_guard_enabled: bool = True
     long_guard_ema_period: int = 200
     long_guard_min_24h_change: float = 0.0
@@ -286,6 +301,21 @@ class UnifiedBot:
         else:
             self.market_classifier = None
             logger.info("⚠️ Market Classifier not available")
+        
+        # Risk Management (Phase 4)
+        if RISK_MGMT_AVAILABLE and TurbulenceIndex is not None:
+            self.turbulence_index = TurbulenceIndex(
+                lookback=config.turbulence_lookback,
+                turbulence_threshold=config.turbulence_threshold
+            )
+            self.slippage_model = SlippageModel(
+                base_slippage_bps=config.base_slippage_bps
+            )
+            logger.info("🛡️ Risk Management initialized (Turbulence Index + Slippage Model)")
+        else:
+            self.turbulence_index = None
+            self.slippage_model = None
+            logger.info("⚠️ Risk Management not available")
         
         logger.info("🤖 Unified Bot initialized (with Circuit Breaker v3.0)")
     

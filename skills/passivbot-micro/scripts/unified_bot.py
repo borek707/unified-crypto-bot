@@ -26,6 +26,14 @@ from pathlib import Path
 from typing import Optional, Dict, List, Literal, Tuple
 import time
 
+# Import technical indicators (Phase 2)
+try:
+    from technical_indicators import TechnicalIndicators, MarketClassifier
+except ImportError:
+    # Fallback if technical_indicators not available
+    TechnicalIndicators = None
+    MarketClassifier = None
+
 # Setup logging - use environment variable or default to home directory
 LOG_DIR = Path(os.getenv('BOT_LOG_DIR', Path.home() / '.crypto_bot' / 'logs'))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -250,6 +258,14 @@ class UnifiedBot:
         self.current_balance = config.initial_capital
         self.peak_balance = config.initial_capital
         
+        # Market Classifier (Phase 2: Better Market Logic)
+        if MarketClassifier is not None:
+            self.market_classifier = MarketClassifier(config)
+            logger.info("📊 Market Classifier initialized (5-state: strong_uptrend, pullback_uptrend, sideways, bear_rally, strong_downtrend)")
+        else:
+            self.market_classifier = None
+            logger.info("⚠️ Market Classifier not available, using simple trend detection")
+        
         logger.info("🤖 Unified Bot initialized (with Circuit Breaker v3.0)")
     
     async def initialize(self):
@@ -294,38 +310,62 @@ class UnifiedBot:
     
     def detect_trend(self, prices: List[float]) -> Literal['uptrend', 'downtrend', 'sideways']:
         """
-        Detect market trend based on recent price action with HYSTERESIS.
-        
-        FIX 1: Hysteresis prevents "ping-pong" effect at trend boundaries.
-        FIX 2: Use 2880 candles for 48h on 1-minute data.
+        Detect market trend using enhanced Market Classifier (Phase 2)
+        Falls back to simple detection if classifier not available
         """
-        # FIX 1: For 1-minute data, 48h = 2880 candles
+        # Phase 2: Use MarketClassifier if available
+        if self.market_classifier is not None and len(prices) >= 100:
+            classification = self.market_classifier.classify(prices)
+            
+            # Map 5-state classification to 3-state for backward compatibility
+            # strong_uptrend, pullback_uptrend -> uptrend
+            # bear_rally, strong_downtrend -> downtrend
+            # sideways -> sideways
+            trend_map = {
+                'strong_uptrend': 'uptrend',
+                'pullback_uptrend': 'uptrend',
+                'sideways': 'sideways',
+                'bear_rally': 'downtrend',
+                'strong_downtrend': 'downtrend'
+            }
+            
+            mapped_trend = trend_map.get(classification, 'sideways')
+            
+            # Log the classification for monitoring
+            if classification != getattr(self, '_last_classification', None):
+                logger.info(f"📊 Market classified as: {classification} (mapped to: {mapped_trend})")
+                self._last_classification = classification
+            
+            return mapped_trend
+        
+        # Fallback: Original simple detection (backward compatibility)
+        return self._detect_trend_simple(prices)
+    
+    def _detect_trend_simple(self, prices: List[float]) -> Literal['uptrend', 'downtrend', 'sideways']:
+        """
+        Original trend detection with hysteresis (fallback method)
+        """
         lookback = 2880  # 48 hours in minutes
         
         if len(prices) < lookback:
-            return self.current_trend  # Keep current trend if not enough data
+            return self.current_trend
         
         recent = prices[-lookback:]
         change = (recent[-1] / recent[0]) - 1
         
-        # FIX 2: Hysteresis (buffer zones)
+        # Hysteresis (buffer zones)
         if self.current_trend == 'sideways':
-            # Enter trend at ±5%
             if change > self.config.trend_threshold:
                 return 'uptrend'
             elif change < -self.config.trend_threshold:
                 return 'downtrend'
             return 'sideways'
-            
         elif self.current_trend == 'uptrend':
-            # Stay in uptrend unless drops below 3.5% (buffer 1.5%)
             exit_threshold = self.config.trend_threshold - 0.015
             if change < exit_threshold:
                 return 'sideways'
             return 'uptrend'
-            
         elif self.current_trend == 'downtrend':
-            # Stay in downtrend unless rises above -3.5% (buffer 1.5%)
             exit_threshold = -self.config.trend_threshold + 0.015
             if change > exit_threshold:
                 return 'sideways'

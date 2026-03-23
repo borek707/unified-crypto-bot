@@ -17,6 +17,21 @@ Automated trading bot with adaptive strategy (LONG/SHORT/SIDEWAYS) for BTC on Hy
 - **Multi-Bot**: 3 risk profiles running simultaneously (Low / Medium / High)
 - **Paper Trading**: test without real funds
 
+## ✅ What Has Been Implemented (2026-03-23)
+
+Current implementation status for anyone cloning this repository:
+
+1. Unified live bot upgraded to a 5-state market regime flow in [skills/passivbot-micro/scripts/unified_bot.py](skills/passivbot-micro/scripts/unified_bot.py).
+2. Trend-following layer added (separate position type with hard stop and trailing stop) in [skills/passivbot-micro/scripts/unified_bot.py](skills/passivbot-micro/scripts/unified_bot.py).
+3. New unified backtest engine added in [scripts/backtest_unified.py](scripts/backtest_unified.py).
+4. Backtest aligned closer to live logic (position types, exits, CB behavior, per-strategy and per-regime reporting) in [scripts/backtest_unified.py](scripts/backtest_unified.py).
+5. Research roadmap added and extended (phase 2 classifier context, PPO track, A2C track, ensemble routing guidance) in [docs/BOT_ROADMAP.md](docs/BOT_ROADMAP.md).
+6. Latest generated backtest snapshots are stored in:
+  - [memory/backtest_results/unified_bot_backtest.json](memory/backtest_results/unified_bot_backtest.json)
+  - [memory/backtest_results/unified_bot_comparison.json](memory/backtest_results/unified_bot_comparison.json)
+
+For current priorities and next phases, use [docs/BOT_ROADMAP.md](docs/BOT_ROADMAP.md) as the source of truth.
+
 ## 📁 Repository Structure
 
 ```
@@ -109,6 +124,8 @@ python3 skills/passivbot-micro/scripts/unified_bot.py --config config_medium_ris
 
 ```bash
 python3 skills/passivbot-micro/scripts/enhanced_backtest.py
+# unified strategy backtest (v1/v2/v3 compare)
+python3 scripts/backtest_unified.py --days 365 --compare
 ```
 
 ## 🏗️ Architecture

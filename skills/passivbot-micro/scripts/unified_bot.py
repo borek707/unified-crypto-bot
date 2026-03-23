@@ -199,6 +199,7 @@ class UnifiedConfig:
     trend_follow_partial_tp_size: float = 0.50  # Close 50% of position
     trend_follow_reentry_enabled: bool = True  # Phase 3: Enable re-entry
     trend_follow_reentry_cooldown_hours: int = 24  # Wait 24h before re-entry
+    use_ppo_trend_following: bool = True  # Phase 3: Use PPO for trend-following
     long_guard_enabled: bool = True
     long_guard_ema_period: int = 200
     long_guard_min_24h_change: float = 0.0

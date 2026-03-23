@@ -194,6 +194,11 @@ class UnifiedConfig:
     trend_follow_hard_stop_pct: float = 0.03
     trend_follow_activation_pct: float = 0.02
     trend_follow_trailing_stop_pct: float = 0.04
+    trend_follow_partial_tp_enabled: bool = True  # Phase 3: Enable partial take profit
+    trend_follow_partial_tp_pct: float = 0.05  # Close 50% at +5%
+    trend_follow_partial_tp_size: float = 0.50  # Close 50% of position
+    trend_follow_reentry_enabled: bool = True  # Phase 3: Enable re-entry
+    trend_follow_reentry_cooldown_hours: int = 24  # Wait 24h before re-entry
     long_guard_enabled: bool = True
     long_guard_ema_period: int = 200
     long_guard_min_24h_change: float = 0.0
@@ -580,13 +585,37 @@ class UnifiedBot:
             if pos.get('type') == 'trend_follow':
                 return pos
         return None
+    
+    def _can_reenter_trend_follow(self) -> bool:
+        """
+        Phase 3: Check if enough time has passed since last trend_follow exit.
+        """
+        if not self.config.trend_follow_reentry_enabled:
+            return False
+        
+        last_exit_time = getattr(self, '_last_trend_follow_exit', None)
+        if last_exit_time is None:
+            return True
+        
+        hours_since_exit = (datetime.now() - last_exit_time).total_seconds() / 3600
+        return hours_since_exit >= self.config.trend_follow_reentry_cooldown_hours
 
     def should_enter_trend_follow(self, price: float, price_history: List[float]) -> bool:
-        """Open a carry long only when the market is in strong uptrend."""
+        """
+        Phase 3: Enhanced entry with re-entry logic.
+        Open a carry long only when the market is in strong uptrend.
+        """
         if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
             return False
+        
+        # Check if we have an active position
         if self._get_trend_follow_position() is not None:
             return False
+        
+        # Check re-entry cooldown
+        if not self._can_reenter_trend_follow():
+            return False
+        
         if not self.is_long_allowed(price, price_history):
             return False
 
@@ -614,10 +643,19 @@ class UnifiedBot:
         return None
 
     def should_exit_trend_follow(self, position: Dict, current_price: float) -> Optional[str]:
-        """Update trailing stop and return exit reason if the carry long should close."""
+        """
+        Check if trend-following position should be closed.
+        Phase 3: Added partial take profit logic.
+        """
         entry = position['entry_price']
         highest_price = max(position.get('highest_price', entry), current_price)
         position['highest_price'] = highest_price
+        
+        # Check partial take profit first
+        if self.config.trend_follow_partial_tp_enabled:
+            partial_tp_price = entry * (1 + self.config.trend_follow_partial_tp_pct)
+            if current_price >= partial_tp_price and not position.get('partial_tp_done'):
+                return 'partial_tp'
 
         if current_price <= position['hard_stop_price']:
             return 'hard_stop'
@@ -633,6 +671,35 @@ class UnifiedBot:
                 return 'trailing_stop'
 
         return None
+    
+    async def partial_close_trend_follow(self, position: Dict, price: float) -> float:
+        """
+        Phase 3: Close partial position (e.g., 50%) at take profit level.
+        Returns PnL from closed portion.
+        """
+        entry = position['entry_price']
+        close_size = position['amount'] * self.config.trend_follow_partial_tp_size
+        
+        pnl = (price - entry) / entry * (close_size * entry)
+        
+        # Update position size
+        position['amount'] *= (1 - self.config.trend_follow_partial_tp_size)
+        position['partial_tp_done'] = True
+        
+        logger.info(f"🚀 PARTIAL CLOSE TREND LONG (+{self.config.trend_follow_partial_tp_pct:.0%}): "
+                   f"Closed {self.config.trend_follow_partial_tp_size:.0%}, PnL ${pnl:.2f}")
+
+        if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
+
+        self.stats['trades_long'] += 1
+        self.stats['profit_long'] += pnl
+        self.stats['profit_total'] += pnl
+
+        return pnl
 
     async def close_trend_follow(self, position: Dict, price: float, reason: str) -> float:
         """Close trend-following long position."""
@@ -642,7 +709,16 @@ class UnifiedBot:
 
         logger.info(f"🚀 CLOSE TREND LONG ({reason}): PnL ${pnl:.2f}")
 
+        # Phase 3: Record exit time for re-entry cooldown
+        if self.config.trend_follow_reentry_enabled:
+            self._last_trend_follow_exit = datetime.now()
+            logger.info(f"⏱️  Re-entry cooldown: {self.config.trend_follow_reentry_cooldown_hours}h")
+
         if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
             self.circuit_breaker.record_trade(pnl)
             self.current_balance += pnl
             if self.current_balance > self.peak_balance:
@@ -1013,7 +1089,10 @@ class UnifiedBot:
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
                             exit_reason = self.should_exit_trend_follow(pos, price)
-                            if exit_reason:
+                            if exit_reason == 'partial_tp':
+                                # Phase 3: Close partial position
+                                await self.partial_close_trend_follow(pos, price)
+                            elif exit_reason:
                                 await self.close_trend_follow(pos, price, exit_reason)
                                 self.positions_long.remove(pos)
 
@@ -1037,7 +1116,10 @@ class UnifiedBot:
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
                             exit_reason = self.should_exit_trend_follow(pos, price)
-                            if exit_reason:
+                            if exit_reason == 'partial_tp':
+                                # Phase 3: Close partial position
+                                await self.partial_close_trend_follow(pos, price)
+                            elif exit_reason:
                                 await self.close_trend_follow(pos, price, exit_reason)
                                 self.positions_long.remove(pos)
                         elif pos.get('type') == 'long_grid' and price >= pos['tp_price']:
@@ -1053,7 +1135,10 @@ class UnifiedBot:
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
                             exit_reason = self.should_exit_trend_follow(pos, price)
-                            if exit_reason:
+                            if exit_reason == 'partial_tp':
+                                # Phase 3: Close partial position
+                                await self.partial_close_trend_follow(pos, price)
+                            elif exit_reason:
                                 await self.close_trend_follow(pos, price, exit_reason)
                                 self.positions_long.remove(pos)
 

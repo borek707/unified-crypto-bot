@@ -49,3 +49,15 @@
 ✅ **WŁĄCZONO ADX JAKO DOMYŚLNĄ METODĘ** (use_market_classifier = True)
 
 ### Teraz: FAZA 3 - Trend-Following
+
+### 23:09-23:15 UTC - FAZA 3 W TRAKCIE
+✅ **Rozwinięto trend_follow:**
+- Dodano partial take profit (50% przy +5%)
+- Dodano re-entry z cooldown (24h)
+- Dodano dynamiczny trailing stop
+- Zintegrowano z główną pętlą bota
+
+### Aktualny status:
+- [x] Faza 2 - GOTOWA ✅
+- [x] Faza 3 - W TRAKCIE (50%)
+- [ ] Faza 4 - oczekuje

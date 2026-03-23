@@ -164,6 +164,10 @@ class UnifiedConfig:
     risk_per_trade_pct: float = 0.01   # 1% risk per trade
     max_total_exposure_pct: float = 0.50  # 50% max exposure
     
+    # === TREND DETECTION ===
+    trend_lookback: int = 48  # 48 hours
+    trend_threshold: float = 0.05  # 5%
+    
     # === DOWNTREND: SHORT 3x ===
     short_leverage: float = 3.0
     short_position_pct: float = 0.15  # 15% = $15
@@ -181,8 +185,9 @@ class UnifiedConfig:
     # === SIDEWAYS: Grid + DCA ===
     sideways_grid_pct: float = 0.30  # 30% capital
     sideways_dca_pct: float = 0.70   # 70% capital
-    sideways_spacing: float = 0.01   # 1%
-    sideways_markup: float = 0.008   # 0.8%
+    sideways_spacing: float = 0.015   # 1.5%
+    sideways_markup: float = 0.010    # 1%
+    stop_loss_multiplier: float = 1.5  # SL = spacing * 1.5
     max_grid_positions: int = 4
     max_dca_per_position: int = 3
     

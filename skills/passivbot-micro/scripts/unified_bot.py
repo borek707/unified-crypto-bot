@@ -181,6 +181,14 @@ class UnifiedConfig:
     long_markup: float = 0.006  # 0.6%
     long_position_pct: float = 0.10  # 10% = $10
     long_entry_mult: float = 1.5
+    trend_follow_position_pct: float = 0.15
+    trend_follow_hard_stop_pct: float = 0.03
+    trend_follow_activation_pct: float = 0.02
+    trend_follow_trailing_stop_pct: float = 0.04
+    long_guard_enabled: bool = True
+    long_guard_ema_period: int = 200
+    long_guard_min_24h_change: float = 0.0
+    long_guard_min_72h_change: float = 0.01
     
     # === SIDEWAYS: Grid + DCA ===
     sideways_grid_pct: float = 0.30  # 30% capital
@@ -219,7 +227,13 @@ class UnifiedBot:
     def __init__(self, config: UnifiedConfig):
         self.config = config
         self.exchange = None
-        self.current_trend: Literal['uptrend', 'downtrend', 'sideways'] = 'sideways'
+        self.current_trend: Literal[
+            'strong_uptrend',
+            'pullback_uptrend',
+            'sideways',
+            'bear_rally',
+            'strong_downtrend',
+        ] = 'sideways'
         
         # Position tracking
         self.positions_short: List[Dict] = []
@@ -292,45 +306,79 @@ class UnifiedBot:
             logger.error(f"Failed to connect: {e}")
             return False
     
-    def detect_trend(self, prices: List[float]) -> Literal['uptrend', 'downtrend', 'sideways']:
-        """
-        Detect market trend based on recent price action with HYSTERESIS.
-        
-        FIX 1: Hysteresis prevents "ping-pong" effect at trend boundaries.
-        FIX 2: Use 2880 candles for 48h on 1-minute data.
-        """
-        # FIX 1: For 1-minute data, 48h = 2880 candles
-        lookback = 2880  # 48 hours in minutes
-        
-        if len(prices) < lookback:
-            return self.current_trend  # Keep current trend if not enough data
-        
-        recent = prices[-lookback:]
-        change = (recent[-1] / recent[0]) - 1
-        
-        # FIX 2: Hysteresis (buffer zones)
-        if self.current_trend == 'sideways':
-            # Enter trend at ±5%
-            if change > self.config.trend_threshold:
-                return 'uptrend'
-            elif change < -self.config.trend_threshold:
-                return 'downtrend'
-            return 'sideways'
-            
-        elif self.current_trend == 'uptrend':
-            # Stay in uptrend unless drops below 3.5% (buffer 1.5%)
-            exit_threshold = self.config.trend_threshold - 0.015
-            if change < exit_threshold:
-                return 'sideways'
-            return 'uptrend'
-            
-        elif self.current_trend == 'downtrend':
-            # Stay in downtrend unless rises above -3.5% (buffer 1.5%)
-            exit_threshold = -self.config.trend_threshold + 0.015
-            if change > exit_threshold:
-                return 'sideways'
-            return 'downtrend'
-        
+    def _ema(self, prices: List[float], period: int) -> float:
+        """Compute EMA using the latest prices."""
+        if not prices:
+            return 0.0
+        if len(prices) < period:
+            return prices[-1]
+
+        alpha = 2 / (period + 1)
+        ema = prices[0]
+        for p in prices[1:]:
+            ema = alpha * p + (1 - alpha) * ema
+        return ema
+
+    def _pct_change(self, prices: List[float], lookback: int) -> Optional[float]:
+        """Return percentage change for a given lookback if enough data is available."""
+        if len(prices) <= lookback or prices[-lookback - 1] <= 0:
+            return None
+        return (prices[-1] / prices[-lookback - 1]) - 1
+
+    def _to_hourly_prices(self, prices: List[float]) -> List[float]:
+        """Collapse minute-level samples into hourly regime series."""
+        samples_per_hour = max(1, int(3600 / max(self.config.check_interval, 1)))
+        if len(prices) <= samples_per_hour:
+            return prices
+        return prices[::samples_per_hour]
+
+    def detect_trend(
+        self,
+        prices: List[float]
+    ) -> Literal['strong_uptrend', 'pullback_uptrend', 'sideways', 'bear_rally', 'strong_downtrend']:
+        """Classify the market using 48h, 7d, 14d and 30d context on hourly data."""
+        hourly_prices = self._to_hourly_prices(prices)
+        if len(hourly_prices) < 48:
+            return self.current_trend
+
+        price = hourly_prices[-1]
+        change_48h = self._pct_change(hourly_prices, 48)
+        change_7d = self._pct_change(hourly_prices, 24 * 7)
+        change_14d = self._pct_change(hourly_prices, 24 * 14)
+        change_30d = self._pct_change(hourly_prices, 24 * 30)
+
+        baseline_change = change_30d
+        ema_period = 24 * 30
+        if baseline_change is None:
+            baseline_change = change_14d if change_14d is not None else change_7d
+            ema_period = 24 * 14
+        if baseline_change is None or change_48h is None or change_7d is None:
+            return self.current_trend
+
+        ema_baseline = self._ema(hourly_prices[-ema_period * 2:], ema_period)
+        above_ema = price >= ema_baseline
+        below_ema = price <= ema_baseline
+        change_14d = change_14d if change_14d is not None else change_7d
+
+        if baseline_change >= 0.12 and change_14d >= 0.05 and change_7d >= 0.02 and above_ema:
+            if change_48h < 0:
+                return 'pullback_uptrend'
+            return 'strong_uptrend'
+
+        if baseline_change >= 0.06 and change_14d >= 0.01 and price >= ema_baseline * 0.98:
+            if -0.08 <= change_48h <= 0.01:
+                return 'pullback_uptrend'
+
+        if baseline_change <= -0.12 and change_14d <= -0.05 and change_7d <= -0.02 and below_ema:
+            if change_48h > 0:
+                return 'bear_rally'
+            return 'strong_downtrend'
+
+        if baseline_change <= -0.06 and change_14d <= -0.01 and price <= ema_baseline * 1.02:
+            if change_48h > 0:
+                return 'bear_rally'
+            return 'strong_downtrend'
+
         return 'sideways'
     
     # ============ SHORT 3x STRATEGY ============
@@ -434,6 +482,9 @@ class UnifiedBot:
         """Check if we should enter LONG grid position."""
         if len(price_history) < 10:
             return False
+
+        if not self.is_long_allowed(price, price_history):
+            return False
         
         # Circuit breaker check
         if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
@@ -450,12 +501,129 @@ class UnifiedBot:
         dip = (recent_high - price) / recent_high
         
         return dip >= self.config.long_grid_spacing
+
+    def _ema(self, prices: List[float], period: int) -> float:
+        """Compute EMA using the latest prices."""
+        if not prices:
+            return 0.0
+        if len(prices) < period:
+            return prices[-1]
+
+        alpha = 2 / (period + 1)
+        ema = prices[0]
+        for p in prices[1:]:
+            ema = alpha * p + (1 - alpha) * ema
+        return ema
+
+    def is_long_allowed(self, price: float, price_history: List[float]) -> bool:
+        """Global guard for opening NEW long positions in bearish conditions."""
+        if not self.config.long_guard_enabled:
+            return True
+
+        ema_period = self.config.long_guard_ema_period
+        min_lookback = max(ema_period, 72)
+        if len(price_history) < min_lookback:
+            return False
+
+        recent = price_history[-(ema_period * 2):]
+        ema_value = self._ema(recent, ema_period)
+
+        price_24h_ago = price_history[-24]
+        price_72h_ago = price_history[-72]
+        ch_24h = (price / price_24h_ago) - 1 if price_24h_ago > 0 else -1
+        ch_72h = (price / price_72h_ago) - 1 if price_72h_ago > 0 else -1
+
+        return (
+            price >= ema_value
+            and ch_24h >= self.config.long_guard_min_24h_change
+            and ch_72h >= self.config.long_guard_min_72h_change
+        )
     
     def _check_exposure_limit(self, new_position_size: float = 0) -> bool:
         """Check if adding new position would exceed exposure limit."""
         current_exposure = sum(p.get('size', 0) for p in self.positions_long + self.positions_short)
         exposure_pct = (current_exposure + new_position_size) / self.current_balance if self.current_balance > 0 else 0
         return exposure_pct <= self.config.max_total_exposure_pct
+
+    def _get_trend_follow_position(self) -> Optional[Dict]:
+        """Return active trend-following long if present."""
+        for pos in self.positions_long:
+            if pos.get('type') == 'trend_follow':
+                return pos
+        return None
+
+    def should_enter_trend_follow(self, price: float, price_history: List[float]) -> bool:
+        """Open a carry long only when the market is in strong uptrend."""
+        if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
+            return False
+        if self._get_trend_follow_position() is not None:
+            return False
+        if not self.is_long_allowed(price, price_history):
+            return False
+
+        position_size = self.config.initial_capital * self.config.trend_follow_position_pct
+        return self._check_exposure_limit(position_size)
+
+    async def open_trend_follow(self, price: float) -> Optional[Dict]:
+        """Open a trend-following long position."""
+        position_size = self.config.initial_capital * self.config.trend_follow_position_pct
+        amount = position_size / price
+
+        logger.info(f"🚀 OPEN TREND LONG: ${position_size:.2f} @ ${price:.2f}")
+
+        if self.config.testnet:
+            return {
+                'id': f"trend_{int(time.time())}",
+                'entry_price': price,
+                'amount': amount,
+                'size': position_size,
+                'highest_price': price,
+                'hard_stop_price': price * (1 - self.config.trend_follow_hard_stop_pct),
+                'trailing_stop_price': None,
+                'type': 'trend_follow'
+            }
+        return None
+
+    def should_exit_trend_follow(self, position: Dict, current_price: float) -> Optional[str]:
+        """Update trailing stop and return exit reason if the carry long should close."""
+        entry = position['entry_price']
+        highest_price = max(position.get('highest_price', entry), current_price)
+        position['highest_price'] = highest_price
+
+        if current_price <= position['hard_stop_price']:
+            return 'hard_stop'
+
+        activation_price = entry * (1 + self.config.trend_follow_activation_pct)
+        if highest_price >= activation_price:
+            trailing_stop = highest_price * (1 - self.config.trend_follow_trailing_stop_pct)
+            position['trailing_stop_price'] = max(
+                position.get('trailing_stop_price') or trailing_stop,
+                trailing_stop,
+            )
+            if current_price <= position['trailing_stop_price']:
+                return 'trailing_stop'
+
+        return None
+
+    async def close_trend_follow(self, position: Dict, price: float, reason: str) -> float:
+        """Close trend-following long position."""
+        entry = position['entry_price']
+        amount = position['amount']
+        pnl = (price - entry) / entry * (amount * entry)
+
+        logger.info(f"🚀 CLOSE TREND LONG ({reason}): PnL ${pnl:.2f}")
+
+        if self.config.circuit_breaker_enabled:
+            self.circuit_breaker.record_trade(pnl)
+            self.current_balance += pnl
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
+
+        self.stats['trades_long'] += 1
+        self.stats['profit_long'] += pnl
+        self.stats['profit_total'] += pnl
+
+        return pnl
     
     async def open_long_grid(self, price: float) -> Optional[Dict]:
         """Open LONG grid position."""
@@ -615,7 +783,7 @@ class UnifiedBot:
         
         return pnl
     
-    async def execute_sideways_strategy(self, price: float, price_history: List[float]):
+    async def execute_sideways_strategy(self, price: float, price_history: List[float], allow_new_entries: bool = True):
         """Execute sideways grid + DCA strategy."""
         levels = self.calculate_sideways_levels(price_history)
         
@@ -633,6 +801,9 @@ class UnifiedBot:
         sideways_positions = [p for p in self.positions_long if p.get('type') == 'sideways']
         grid_positions = [p for p in sideways_positions if not p.get('is_dca')]
         dca_positions = [p for p in sideways_positions if p.get('is_dca')]
+
+        if not allow_new_entries:
+            return
         
         max_grid = 4  # Max 4 grid positions
         max_dca = 3   # Max 3 DCA adds per position
@@ -790,7 +961,7 @@ class UnifiedBot:
                     self.current_trend = new_trend
                     previous_trend = new_trend
                 
-                if self.current_trend == 'downtrend':
+                if self.current_trend in ('strong_downtrend', 'bear_rally'):
                     # SHORT 3x STRATEGY
                     
                     # FIX 3: Don't close longs! Let them hit SL/TP
@@ -807,31 +978,64 @@ class UnifiedBot:
                         if pos:
                             self.positions_short.append(pos)
                 
-                elif self.current_trend == 'uptrend':
-                    # LONG Grid STRATEGY
+                elif self.current_trend == 'pullback_uptrend':
+                    # BUY THE DIP inside a broader bullish regime
 
-                    # FIX 3: Don't close shorts! Let them hit SL/TP
-                    # Check TP and remove closed positions first
                     for pos in self.positions_long[:]:
-                        if price >= pos['tp_price']:
+                        if pos.get('type') == 'trend_follow':
+                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            if exit_reason:
+                                await self.close_trend_follow(pos, price, exit_reason)
+                                self.positions_long.remove(pos)
+
+                    for pos in self.positions_long[:]:
+                        if pos.get('type') == 'long_grid' and price >= pos['tp_price']:
                             await self.close_long_grid(pos, price)
                             self.positions_long.remove(pos)
 
-                    # Then check for new entry (only if no positions)
-                    if not self.positions_long:
+                    if not any(p.get('type') == 'long_grid' for p in self.positions_long):
                         if self.should_enter_long_grid(price, price_history):
                             pos = await self.open_long_grid(price)
                             if pos:
                                 self.positions_long.append(pos)
+
+                elif self.current_trend == 'strong_uptrend':
+                    # Strong trend: carry one long and protect it with trailing stop.
+                    for pos in self.positions_short[:]:
+                        await self.close_short(pos, price, 'strong_uptrend')
+                        self.positions_short.remove(pos)
+
+                    for pos in self.positions_long[:]:
+                        if pos.get('type') == 'trend_follow':
+                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            if exit_reason:
+                                await self.close_trend_follow(pos, price, exit_reason)
+                                self.positions_long.remove(pos)
+                        elif pos.get('type') == 'long_grid' and price >= pos['tp_price']:
+                            await self.close_long_grid(pos, price)
+                            self.positions_long.remove(pos)
+
+                    if self.should_enter_trend_follow(price, price_history):
+                        pos = await self.open_trend_follow(price)
+                        if pos:
+                            self.positions_long.append(pos)
                 
                 else:  # sideways
+                    for pos in self.positions_long[:]:
+                        if pos.get('type') == 'trend_follow':
+                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            if exit_reason:
+                                await self.close_trend_follow(pos, price, exit_reason)
+                                self.positions_long.remove(pos)
+
                     # Close all leveraged positions (keep grid positions)
                     for pos in self.positions_short[:]:
                         await self.close_short(pos, price, 'sideways')
                         self.positions_short.remove(pos)
                     
                     # === SIDEWAYS: Grid + DCA Strategy ===
-                    await self.execute_sideways_strategy(price, price_history)
+                    allow_sideways_longs = self.is_long_allowed(price, price_history)
+                    await self.execute_sideways_strategy(price, price_history, allow_new_entries=allow_sideways_longs)
                 
                 await asyncio.sleep(self.config.check_interval)
                 

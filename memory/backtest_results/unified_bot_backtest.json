@@ -1,0 +1,44 @@
+{
+  "initial_capital": 100.0,
+  "final_balance": 86.0716515284578,
+  "total_return_pct": -13.928348471542195,
+  "hodl_return_pct": -16.80215835777126,
+  "hodl_final": 83.19784164222874,
+  "max_drawdown_pct": 17.785444827234993,
+  "sharpe": -0.54,
+  "total_trades": 850,
+  "win_rate": 66.23529411764706,
+  "profit_factor": 0.87,
+  "avg_win": 0.11887550534897236,
+  "avg_loss": -0.2668388779895773,
+  "cb_activations": 439,
+  "by_strategy": {
+    "sideways_grid": {
+      "trades": 679,
+      "pnl": 1.1445999999999714,
+      "wins": 485
+    },
+    "long_grid": {
+      "trades": 128,
+      "pnl": -14.107948471537236,
+      "wins": 63
+    },
+    "short_3x": {
+      "trades": 43,
+      "pnl": 3.3074999999999957,
+      "wins": 15
+    }
+  },
+  "trend_pct": {
+    "uptrend": 6.289954337899544,
+    "downtrend": 7.374429223744292,
+    "sideways": 86.33561643835617
+  },
+  "period": {
+    "start": "2025-03-23",
+    "end": "2026-03-23",
+    "days": 364,
+    "start_price": 85250.0,
+    "end_price": 70926.16
+  }
+}

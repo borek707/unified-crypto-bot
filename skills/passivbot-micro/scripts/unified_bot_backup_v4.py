@@ -210,9 +210,6 @@ class UnifiedConfig:
     trend_follow_reentry_cooldown_hours: int = 24  # Wait 24h before re-entry
     use_ppo_trend_following: bool = True  # Phase 3: Use PPO for trend-following
     
-    # === ENHANCED MODE (Higher risk/reward) ===
-    enhanced_mode: bool = False  # Enable aggressive strategies (see unified_bot_enhanced.py)
-    
     # === RISK MANAGEMENT (Phase 4) ===
     turbulence_lookback: int = 30
     turbulence_threshold: float = 1.5

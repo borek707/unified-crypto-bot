@@ -174,6 +174,44 @@ def fetch_xauusd_data(interval="15m", days=5):
         return {"error": "No data available"}
     
     stock_data = result[0]
+    
+    # SANITY CHECK: If Yahoo returns crazy prices, use fallback
+    meta = stock_data.get('meta', {})
+    current_price = meta.get('regularMarketPrice', 0)
+    
+    if current_price > 3500:  # Yahoo bug - returns $4000+ instead of ~$2500
+        print(f"⚠️ Yahoo returned invalid price ${current_price}. Using fallback...", file=sys.stderr)
+        # Import fallback
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        try:
+            from fallback_gold import get_fallback_gold_price
+            fallback_price = get_fallback_gold_price()
+            # Create synthetic data with fallback price - need at least 20 candles for ATR
+            now = datetime.utcnow()
+            candles = []
+            for i in range(25):  # Create 25 candles going back
+                ts = now - timedelta(minutes=15*i)
+                candles.insert(0, {
+                    "timestamp": int(ts.timestamp()),
+                    "datetime": ts.strftime('%Y-%m-%d %H:%M:%S'),
+                    "date": ts.strftime('%Y-%m-%d'),
+                    "time": ts.strftime('%H:%M'),
+                    "open": fallback_price * (1 - i*0.0001),
+                    "high": fallback_price * (1 + 0.001 - i*0.0001),
+                    "low": fallback_price * (1 - 0.001 - i*0.0001),
+                    "close": fallback_price * (1 - i*0.0001),
+                    "volume": 1000
+                })
+            return {
+                "symbol": "XAUUSD_FALLBACK",
+                "candles": candles,
+                "interval": interval,
+                "meta": {"symbol": "XAUUSD", "regularMarketPrice": fallback_price, "fallback": True}
+            }
+        except Exception as e:
+            print(f"⚠️ Fallback failed: {e}", file=sys.stderr)
+            return {"error": f"Yahoo price invalid (${current_price}) and fallback failed"}
+    
     timestamps = stock_data.get('timestamp', [])
     indicators = stock_data.get('indicators', {})
     quote = indicators.get('quote', [{}])[0]

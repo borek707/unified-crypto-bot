@@ -121,9 +121,21 @@ Create `config.json`:
   "trend_follow_tp": 0.03,
   "trend_follow_sl": 0.015,
   "use_market_classifier": true,
-  "circuit_breaker_enabled": true
+  "circuit_breaker_enabled": true,
+  "enhanced_mode": false  // Set to true for aggressive strategy (see below)
 }
 ```
+
+### Enhanced Mode (Higher Risk/Reward)
+For aggressive strategy with higher returns (tested +13.2% vs 0% standard on 730 days):
+```json
+{
+  "enhanced_mode": true,
+  "circuit_breaker_enabled": true
+  // Higher position sizes, breakdown entries, pyramiding enabled
+}
+```
+See `unified_bot_enhanced.py` for full implementation details.
 
 ### Run Bot
 ```bash

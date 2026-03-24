@@ -1,0 +1,94 @@
+{
+  "_comment": "ENHANCED CONFIG - Higher risk/reward version. Target: 5% in bear, 10% in bull. WARNING: Higher drawdown (up to 20%)",
+  
+  "initial_capital": 100.0,
+  
+  "circuit_breaker_enabled": true,
+  "max_daily_loss_pct": 0.08,
+  "max_drawdown_pct": 0.20,
+  "max_consecutive_losses": 4,
+  "circuit_cooldown_minutes": 30,
+  
+  "risk_per_trade_pct": 0.02,
+  "max_total_exposure_pct": 0.75,
+  
+  "trend_lookback": 24,
+  "trend_threshold": 0.03,
+  "use_market_classifier": true,
+  
+  "_short_strategy": "Aggressive shorting in bear markets",
+  "short_leverage": 3.0,
+  "short_position_pct": 0.25,
+  "short_max_positions": 3,
+  "short_bounce_threshold": 0.008,
+  "short_tp": 0.025,
+  "short_sl": 0.018,
+  "short_breakdown_enabled": true,
+  "short_breakdown_threshold": 0.01,
+  
+  "_long_strategy": "Tighter grids, more positions in bull",
+  "long_grid_spacing": 0.005,
+  "long_markup": 0.004,
+  "long_position_pct": 0.20,
+  "long_entry_mult": 1.1,
+  "max_grid_positions": 6,
+  
+  "_trend_follow": "Larger positions, pyramiding enabled",
+  "trend_follow_position_pct": 0.25,
+  "trend_follow_hard_stop_pct": 0.03,
+  "trend_follow_activation_pct": 0.02,
+  "trend_follow_trailing_stop_pct": 0.04,
+  "trend_follow_partial_tp_enabled": true,
+  "trend_follow_partial_tp_pct": 0.03,
+  "trend_follow_partial_tp_size": 0.30,
+  "trend_follow_reentry_enabled": true,
+  "trend_follow_reentry_cooldown_hours": 12,
+  "trend_follow_pyramiding_enabled": true,
+  "trend_follow_pyramiding_threshold": 0.01,
+  "trend_follow_max_pyramids": 2,
+  
+  "_dynamic_sizing": "Increase size in strong trends",
+  "dynamic_sizing_enabled": true,
+  "strong_uptrend_multiplier": 1.5,
+  "strong_downtrend_multiplier": 1.3,
+  "sideways_multiplier": 0.5,
+  
+  "_sideways": "Reduced activity in sideways",
+  "sideways_grid_pct": 0.20,
+  "sideways_dca_pct": 0.80,
+  "sideways_spacing": 0.015,
+  "sideways_markup": 0.010,
+  "sideways_max_positions": 2,
+  "stop_loss_multiplier": 1.5,
+  "max_dca_per_position": 2,
+  
+  "_risk_management": "Phase 4 enhancements",
+  "long_guard_enabled": true,
+  "long_guard_ema_period": 200,
+  "long_guard_min_24h_change": 0.0,
+  "long_guard_min_72h_change": 0.005,
+  
+  "turbulence_lookback": 30,
+  "turbulence_threshold": 1.5,
+  "turbulence_reduce_size": true,
+  "base_slippage_bps": 5.0,
+  
+  "_sentiment": "Fear & Greed integration",
+  "sentiment_enabled": false,
+  "sentiment_extreme_fear_threshold": 20,
+  "sentiment_extreme_greed_threshold": 80,
+  "sentiment_block_trading_hours": 6,
+  
+  "_scalping": "Optional scalping in sideways",
+  "scalping_enabled": false,
+  "scalping_threshold": 0.003,
+  "scalping_max_positions": 2,
+  
+  "daily_loss_limit": 0.20,
+  "liquidation_buffer": 0.15,
+  
+  "exchange": "hyperliquid",
+  "symbol": "BTC/USDC:USDC",
+  "testnet": true,
+  "check_interval": 300
+}

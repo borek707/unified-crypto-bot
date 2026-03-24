@@ -1,0 +1,99 @@
+{
+  "_comment": "CONFIG FOR $100 CAPITAL - Ultra conservative fees, higher risk per trade to overcome fixed costs",
+  
+  "initial_capital": 100.0,
+  
+  "circuit_breaker_enabled": true,
+  "max_daily_loss_pct": 0.10,
+  "max_drawdown_pct": 0.25,
+  "max_consecutive_losses": 3,
+  "circuit_cooldown_minutes": 60,
+  
+  "risk_per_trade_pct": 0.05,
+  "max_total_exposure_pct": 0.80,
+  
+  "trend_lookback": 24,
+  "trend_threshold": 0.03,
+  "use_market_classifier": true,
+  
+  "_short_strategy": "Aggressive to overcome fees",
+  "short_leverage": 3.0,
+  "short_position_pct": 0.40,
+  "short_max_positions": 2,
+  "short_bounce_threshold": 0.015,
+  "short_tp": 0.04,
+  "short_sl": 0.025,
+  "short_breakdown_enabled": true,
+  "short_breakdown_threshold": 0.015,
+  
+  "_long_strategy": "Fewer, bigger trades",
+  "long_grid_spacing": 0.012,
+  "long_markup": 0.008,
+  "long_position_pct": 0.35,
+  "long_entry_mult": 1.1,
+  "max_grid_positions": 3,
+  
+  "_trend_follow": "Bigger positions, hold longer",
+  "trend_follow_position_pct": 0.40,
+  "trend_follow_hard_stop_pct": 0.05,
+  "trend_follow_activation_pct": 0.03,
+  "trend_follow_trailing_stop_pct": 0.06,
+  "trend_follow_partial_tp_enabled": true,
+  "trend_follow_partial_tp_pct": 0.06,
+  "trend_follow_partial_tp_size": 0.50,
+  "trend_follow_reentry_enabled": true,
+  "trend_follow_reentry_cooldown_hours": 24,
+  "trend_follow_pyramiding_enabled": false,
+  
+  "_dynamic_sizing": "Will be overridden by risk scaling",
+  "dynamic_sizing_enabled": false,
+  "strong_uptrend_multiplier": 1.0,
+  "strong_downtrend_multiplier": 1.0,
+  "sideways_multiplier": 0.5,
+  
+  "_risk_scaling": "NEW: Reduce risk as capital grows",
+  "risk_scaling_enabled": true,
+  "risk_scaling_levels": [
+    {"capital_max": 150, "risk_multiplier": 1.5},
+    {"capital_max": 250, "risk_multiplier": 1.2},
+    {"capital_max": 500, "risk_multiplier": 1.0},
+    {"capital_max": 1000, "risk_multiplier": 0.8},
+    {"capital_max": 999999, "risk_multiplier": 0.6}
+  ],
+  
+  "_sideways": "Minimal activity",
+  "sideways_grid_pct": 0.30,
+  "sideways_dca_pct": 0.70,
+  "sideways_spacing": 0.02,
+  "sideways_markup": 0.015,
+  "sideways_max_positions": 2,
+  "stop_loss_multiplier": 1.5,
+  "max_dca_per_position": 2,
+  
+  "long_guard_enabled": true,
+  "long_guard_ema_period": 200,
+  "long_guard_min_24h_change": 0.0,
+  "long_guard_min_72h_change": 0.01,
+  
+  "turbulence_lookback": 30,
+  "turbulence_threshold": 2.0,
+  "turbulence_reduce_size": true,
+  "base_slippage_bps": 10.0,
+  
+  "sentiment_enabled": false,
+  "sentiment_extreme_fear_threshold": 20,
+  "sentiment_extreme_greed_threshold": 80,
+  "sentiment_block_trading_hours": 6,
+  
+  "scalping_enabled": false,
+  "scalping_threshold": 0.005,
+  "scalping_max_positions": 1,
+  
+  "daily_loss_limit": 0.25,
+  "liquidation_buffer": 0.20,
+  
+  "exchange": "hyperliquid",
+  "symbol": "BTC/USDC:USDC",
+  "testnet": true,
+  "check_interval": 600
+}

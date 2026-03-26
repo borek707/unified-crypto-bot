@@ -1381,6 +1381,114 @@ class UnifiedBot:
         logger.info("="*70)
 
 
+# ============================================================================
+# SMART EXECUTION - Post-only limit orders for maker fees (0.015%)
+# ============================================================================
+
+class SmartExecution:
+    """
+    Smart order execution using post-only limit orders.
+    
+    Hyperliquid Fees:
+    - Maker (limit, post-only): 0.015% (3x cheaper!)
+    - Taker (market): 0.045%
+    
+    Strategy:
+    1. Place post-only limit order slightly better than market price
+    2. Wait for fill (passive execution)
+    3. If not filled within timeout, fallback to market order
+    """
+    
+    MAKER_FEE = 0.00015  # 0.015%
+    TAKER_FEE = 0.00045  # 0.045%
+    
+    def __init__(self, exchange, fee_mode: str = 'maker'):
+        self.exchange = exchange
+        self.fee_mode = fee_mode
+        self.fee_pct = self.MAKER_FEE if fee_mode == 'maker' else self.TAKER_FEE
+    
+    async def place_buy_order(self, symbol: str, amount: float, price: float, 
+                              timeout_sec: int = 30) -> Optional[Dict]:
+        """
+        Place buy order with post-only limit for maker fee.
+        """
+        # Post-only limit: price slightly below market
+        limit_price = price * 0.999  # 0.1% below market
+        
+        try:
+            # Try post-only limit order first
+            order = self.exchange.create_limit_buy_order(
+                symbol=symbol,
+                amount=amount,
+                price=limit_price,
+                params={'postOnly': True}
+            )
+            
+            logger.info(f"📊 Post-only BUY placed: {amount:.6f} @ ${limit_price:.2f} "
+                        f"(maker fee: 0.015%)")
+            
+            # Wait for fill
+            await asyncio.sleep(timeout_sec)
+            
+            # Check if filled
+            order = self.exchange.fetch_order(order['id'], symbol)
+            if order['status'] == 'closed':
+                logger.info(f"✅ Maker order filled! Saved 0.03% in fees")
+                return order
+            else:
+                # Cancel and fallback to market
+                self.exchange.cancel_order(order['id'], symbol)
+                logger.warning(f"⏱️  Maker order timeout, using market order")
+                
+        except Exception as e:
+            logger.warning(f"Maker order failed: {e}")
+        
+        # Fallback to market order (taker fee)
+        try:
+            order = self.exchange.create_market_buy_order(symbol, amount)
+            logger.info(f"📈 Market BUY executed (taker fee: 0.045%)")
+            return order
+        except Exception as e:
+            logger.error(f"Market order failed: {e}")
+            return None
+    
+    async def place_sell_order(self, symbol: str, amount: float, price: float,
+                               timeout_sec: int = 30) -> Optional[Dict]:
+        """Place sell order with post-only limit for maker fee."""
+        limit_price = price * 1.001  # 0.1% above market
+        
+        try:
+            order = self.exchange.create_limit_sell_order(
+                symbol=symbol,
+                amount=amount,
+                price=limit_price,
+                params={'postOnly': True}
+            )
+            
+            logger.info(f"📊 Post-only SELL placed: {amount:.6f} @ ${limit_price:.2f}")
+            
+            await asyncio.sleep(timeout_sec)
+            
+            order = self.exchange.fetch_order(order['id'], symbol)
+            if order['status'] == 'closed':
+                logger.info(f"✅ Maker order filled!")
+                return order
+            else:
+                self.exchange.cancel_order(order['id'], symbol)
+                logger.warning(f"⏱️  Maker order timeout, using market order")
+                
+        except Exception as e:
+            logger.warning(f"Maker order failed: {e}")
+        
+        try:
+            order = self.exchange.create_market_sell_order(symbol, amount)
+            logger.info(f"📉 Market SELL executed (taker fee: 0.045%)")
+            return order
+        except Exception as e:
+            logger.error(f"Market order failed: {e}")
+            return None
+
+
 def main():
     parser = argparse.ArgumentParser(description='Unified LONG/SHORT Bot')
     parser.add_argument('--config', default='unified_config.json')

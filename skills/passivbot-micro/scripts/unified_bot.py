@@ -43,6 +43,15 @@ except ImportError:
     TurbulenceIndex = None
     SlippageModel = None
 
+# Import PPO Engine (Phase 4) - Continuous Action Space
+try:
+    from ppo_continuous import ContinuousPPOModel, PPOConfig, train_continuous_ppo
+    PPO_AVAILABLE = True
+except ImportError:
+    PPO_AVAILABLE = False
+    ContinuousPPOModel = None
+    PPOConfig = None
+
 # Setup logging - use environment variable or default to home directory
 LOG_DIR = Path(os.getenv('BOT_LOG_DIR', Path.home() / '.crypto_bot' / 'logs'))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -314,13 +323,37 @@ class UnifiedBot:
             self.slippage_model = SlippageModel(
                 base_slippage_bps=config.base_slippage_bps
             )
+            self.turbulence_result = None  # Cache last result
             logger.info("🛡️ Risk Management initialized (Turbulence Index + Slippage Model)")
         else:
             self.turbulence_index = None
             self.slippage_model = None
+            self.turbulence_result = None
             logger.info("⚠️ Risk Management not available")
         
-        logger.info("🤖 Unified Bot initialized (with Circuit Breaker v3.0)")
+        # PPO Model (Phase 4) - Continuous Action Space
+        if PPO_AVAILABLE and ContinuousPPOModel is not None and config.use_ppo_trend_following:
+            ppo_config = PPOConfig(
+                learning_rate=0.0003,
+                num_epochs=10,
+                trading_fee_pct=0.0006,  # Realistic taker fee
+                slippage_bps=5.0,  # 5 basis points slippage
+                overtrade_penalty=0.001,  # Penalize excessive trading
+                action_threshold=0.1
+            )
+            self.ppo_model = ContinuousPPOModel(ppo_config)
+            self.ppo_model_path = Path(os.getenv('BOT_DATA_DIR', Path.home() / '.crypto_bot' / 'data')) / 'ppo_continuous_model.npz'
+            if self.ppo_model_path.exists():
+                self.ppo_model.load(str(self.ppo_model_path))
+            logger.info("🧠 Continuous PPO Model initialized")
+        else:
+            self.ppo_model = None
+            if config.use_ppo_trend_following and not PPO_AVAILABLE:
+                logger.warning("⚠️ PPO requested but not available")
+            else:
+                logger.info("ℹ️ PPO trend-following disabled")
+        
+        logger.info("🤖 Unified Bot initialized (with Circuit Breaker v4.0 - PPO + Turbulence)")
     
     async def initialize(self):
         """Initialize exchange connection."""
@@ -636,11 +669,19 @@ class UnifiedBot:
 
     def should_enter_trend_follow(self, price: float, price_history: List[float]) -> bool:
         """
-        Phase 3: Enhanced entry with re-entry logic.
-        Open a carry long only when the market is in strong uptrend.
+        Phase 4: Continuous PPO action space.
+        Action > threshold means BUY with intensity proportional to action.
         """
         if self.config.circuit_breaker_enabled and self.circuit_breaker.active:
             return False
+        
+        # KILL SWITCH: Turbulence Index - liquidate everything if turbulent
+        if self.turbulence_index is not None and len(price_history) >= 50:
+            self.turbulence_result = self.turbulence_index.calculate(price_history)
+            if self.turbulence_result.is_turbulent:
+                logger.warning(f"🚨 TURBULENCE KILL SWITCH ACTIVATED ({self.turbulence_result.volatility_regime})!")
+                # If we have position, it will be liquidated in exit logic
+                return False
         
         # Check if we have an active position
         if self._get_trend_follow_position() is not None:
@@ -650,11 +691,23 @@ class UnifiedBot:
         if not self._can_reenter_trend_follow():
             return False
         
-        if not self.is_long_allowed(price, price_history):
-            return False
-
-        position_size = self.config.initial_capital * self.config.trend_follow_position_pct
-        return self._check_exposure_limit(position_size)
+        # Continuous PPO decision
+        if self.ppo_model is not None and len(price_history) >= 50:
+            action = self.ppo_model.predict(price_history, None)
+            action_type, intensity = self.ppo_model.interpret_action(action, has_position=False)
+            
+            if action_type == 'BUY':
+                logger.debug(f"🧠 PPO signals BUY (action={action:+.3f}, intensity={intensity:.2f})")
+                if not self.is_long_allowed(price, price_history):
+                    return False
+                
+                # Position size based on PPO confidence
+                base_size = self.config.initial_capital * self.config.trend_follow_position_pct
+                adjusted_size = base_size * intensity
+                
+                return self._check_exposure_limit(adjusted_size)
+        
+        return False
 
     async def open_trend_follow(self, price: float) -> Optional[Dict]:
         """Open a trend-following long position."""
@@ -676,14 +729,30 @@ class UnifiedBot:
             }
         return None
 
-    def should_exit_trend_follow(self, position: Dict, current_price: float) -> Optional[str]:
+    def should_exit_trend_follow(self, position: Dict, current_price: float, price_history: List[float] = None) -> Optional[str]:
         """
-        Check if trend-following position should be closed.
-        Phase 3: Added partial take profit logic.
+        Phase 4: Continuous PPO exit or KILL SWITCH from Turbulence.
+        Action < -threshold means SELL (proportional to action magnitude).
         """
+        # KILL SWITCH: Turbulence - liquidate immediately
+        if self.turbulence_index is not None and price_history and len(price_history) >= 50:
+            turb_result = self.turbulence_index.calculate(price_history)
+            if turb_result.is_turbulent:
+                logger.warning(f"🚨 TURBULENCE LIQUIDATION! Selling all at {current_price}")
+                return 'turbulence_liquidation'
+        
         entry = position['entry_price']
         highest_price = max(position.get('highest_price', entry), current_price)
         position['highest_price'] = highest_price
+        
+        # Continuous PPO exit signal
+        if self.ppo_model is not None and price_history and len(price_history) >= 50:
+            action = self.ppo_model.predict(price_history, position)
+            action_type, intensity = self.ppo_model.interpret_action(action, has_position=True)
+            
+            if action_type == 'SELL':
+                logger.debug(f"🧠 PPO signals SELL (action={action:+.3f}, intensity={intensity:.2f})")
+                return 'ppo_exit'
         
         # Check partial take profit first
         if self.config.trend_follow_partial_tp_enabled:
@@ -971,7 +1040,7 @@ class UnifiedBot:
     async def run(self):
         """Main bot loop."""
         logger.info("="*70)
-        logger.info("🚀 UNIFIED BOT STARTED (v3.0 with Circuit Breaker)")
+        logger.info("🚀 UNIFIED BOT STARTED (v4.0 with PPO + Turbulence)")
         logger.info("="*70)
         logger.info(f"Capital: ${self.config.initial_capital}")
         logger.info(f"Trend detection: {self.config.trend_lookback}h / {self.config.trend_threshold*100:.0f}%")
@@ -981,6 +1050,14 @@ class UnifiedBot:
             logger.info(f"  - Max drawdown: {self.config.max_drawdown_pct:.1%}")
             logger.info(f"  - Max consecutive losses: {self.config.max_consecutive_losses}")
             logger.info(f"  - Cooldown: {self.config.circuit_cooldown_minutes} min")
+        if self.ppo_model is not None:
+            logger.info(f"🧠 PPO Trend-Following: ENABLED")
+        else:
+            logger.info(f"ℹ️ PPO Trend-Following: disabled")
+        if self.turbulence_index is not None:
+            logger.info(f"🛡️ Turbulence Filter: ENABLED (threshold: {self.config.turbulence_threshold})")
+        else:
+            logger.info(f"ℹ️ Turbulence Filter: disabled")
         logger.info("="*70)
         
         # Initialize exchange connection
@@ -1122,7 +1199,7 @@ class UnifiedBot:
 
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
-                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            exit_reason = self.should_exit_trend_follow(pos, price, price_history)
                             if exit_reason == 'partial_tp':
                                 # Phase 3: Close partial position
                                 await self.partial_close_trend_follow(pos, price)
@@ -1149,7 +1226,7 @@ class UnifiedBot:
 
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
-                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            exit_reason = self.should_exit_trend_follow(pos, price, price_history)
                             if exit_reason == 'partial_tp':
                                 # Phase 3: Close partial position
                                 await self.partial_close_trend_follow(pos, price)
@@ -1168,7 +1245,7 @@ class UnifiedBot:
                 else:  # sideways
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
-                            exit_reason = self.should_exit_trend_follow(pos, price)
+                            exit_reason = self.should_exit_trend_follow(pos, price, price_history)
                             if exit_reason == 'partial_tp':
                                 # Phase 3: Close partial position
                                 await self.partial_close_trend_follow(pos, price)

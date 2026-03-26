@@ -76,3 +76,5 @@ MEMORY.md
 HEARTBEAT.md
 BOOTSTRAP.md
 SOUL.md
+*.md
+!README.md

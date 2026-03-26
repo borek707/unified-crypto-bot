@@ -1,1 +1,0 @@
-{"coingecko": {"calls": 0, "last_reset": 0, "max_per_min": 25, "delay": 2}, "yahoo": {"calls": 3, "last_reset": 1774015207.2592323, "max_per_hour": 80, "delay": 5}, "gold": {"calls": 0, "last_reset": 0, "max_per_min": 4, "delay": 3}}

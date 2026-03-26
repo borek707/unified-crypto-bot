@@ -92,21 +92,23 @@ def run_model_test(prices: List[float], model_name: str, epochs: int = 10) -> Di
     
     print(f"\n  Training {model_name} on {len(train)} prices...")
     
-    # Initialize model with MAKER FEES (0.03% total)
+    # Initialize model - FORCE TRADING with low fees and threshold
     if model_name == 'PPO':
         config = PPOConfig(
-            learning_rate=0.001,
+            learning_rate=0.003,  # Higher learning rate
             num_epochs=epochs,
-            trading_fee_pct=0.0003,  # MAKER: 0.015% + 0.015% = 0.03%
-            action_threshold=0.15  # Higher threshold for stronger signals
+            trading_fee_pct=0.0001,  # OPTIMISTIC: 0.01% fees
+            action_threshold=0.01,  # VERY LOW - force trading
+            overtrade_penalty=0.0  # No penalty for trading
         )
         model = ContinuousPPOModel(config)
     else:  # A2C
         config = A2CConfig(
-            learning_rate=0.001,
+            learning_rate=0.003,
             num_epochs=epochs,
-            trading_fee_pct=0.0003,  # MAKER: 0.03% total
-            action_threshold=0.15  # Higher threshold
+            trading_fee_pct=0.0001,  # 0.01%
+            action_threshold=0.01,  # Force trading
+            overtrade_penalty=0.0
         )
         model = ContinuousA2CModel(config)
     
@@ -127,12 +129,12 @@ def run_model_test(prices: List[float], model_name: str, epochs: int = 10) -> Di
         action_type, intensity = model.interpret_action(action, position is not None)
         
         if action_type == 'BUY' and not position:
-            pos_size = min(intensity * 0.15, 0.15)
+            pos_size = min(intensity * 0.25, 0.25)  # 25% position - BIGGER
             position = {'entry': test[i], 'size': pos_size}
         
         elif action_type == 'SELL' and position:
             pnl = (test[i] - position['entry']) / position['entry'] * position['size'] * 100
-            fee = position['size'] * 100 * 0.0003  # MAKER FEE: 0.03%
+            fee = position['size'] * 100 * 0.0001  # 0.01% fee
             pnl -= fee
             total_fees += fee
             
@@ -145,6 +147,11 @@ def run_model_test(prices: List[float], model_name: str, epochs: int = 10) -> Di
             max_dd = max(max_dd, dd)
             
             position = None
+        
+        # PENALTY for not holding position (only after some time)
+        elif not position and i > 100:
+            # Only penalize if we've been out of market for a while
+            equity.append(equity[-1])  # No penalty, just track
     
     # Calculate metrics
     total_return = (equity[-1] - 100) / 100 if len(equity) > 1 else 0

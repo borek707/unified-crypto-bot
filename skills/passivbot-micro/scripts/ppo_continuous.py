@@ -113,7 +113,7 @@ class ContinuousPPOModel:
         has_position = 1.0 if position else 0.0
         position_pnl = 0.0
         if position:
-            position_pnl = (prices[-1] - position['entry_price']) / position['entry_price']
+            position_pnl = (prices[-1] - position['entry']) / position['entry']
         
         # Time since last trade (normalized)
         time_since_trade = min(self.trade_count / 100.0, 1.0)
@@ -217,13 +217,13 @@ class ContinuousPPOModel:
                 if action > self.config.action_threshold and position is None:
                     # ENTER LONG (proportional to action strength)
                     position_size = abs(action) * 0.15  # Max 15% position
-                    position = {'entry_price': prices[i], 'size': position_size}
+                    position = {'entry': prices[i], 'size': position_size}
                     is_entry = True
                     epoch_trades += 1
                     
                 elif action < -self.config.action_threshold and position:
                     # EXIT (proportional to action strength)
-                    pnl = (prices[i] - position['entry_price']) / position['entry_price']
+                    pnl = (prices[i] - position['entry']) / position['entry']
                     pnl *= position['size']
                     is_exit = True
                     epoch_trades += 1
@@ -235,7 +235,7 @@ class ContinuousPPOModel:
                 
                 # Small penalty for holding (opportunity cost)
                 elif position:
-                    unrealized_pnl = (prices[i] - position['entry_price']) / position['entry_price']
+                    unrealized_pnl = (prices[i] - position['entry']) / position['entry']
                     reward = unrealized_pnl * position['size'] * 0.001  # Small carry reward
                 
                 next_state = self.get_state(prices[:i+2], position)

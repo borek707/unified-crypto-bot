@@ -68,7 +68,7 @@ class ContinuousA2CModel:
         has_position = 1.0 if position else 0.0
         position_pnl = 0.0
         if position:
-            position_pnl = (prices[-1] - position['entry_price']) / position['entry_price']
+            position_pnl = (prices[-1] - position['entry']) / position['entry']
         
         time_since_trade = min(self.trade_count / 100.0, 1.0)
         
@@ -135,12 +135,12 @@ class ContinuousA2CModel:
                 
                 if action > self.config.action_threshold and position is None:
                     position_size = abs(action) * 0.15
-                    position = {'entry_price': prices[i], 'size': position_size}
+                    position = {'entry': prices[i], 'size': position_size}
                     is_entry = True
                     epoch_trades += 1
                     
                 elif action < -self.config.action_threshold and position:
-                    pnl = (prices[i] - position['entry_price']) / position['entry_price']
+                    pnl = (prices[i] - position['entry']) / position['entry']
                     pnl *= position['size']
                     is_exit = True
                     epoch_trades += 1
@@ -149,7 +149,7 @@ class ContinuousA2CModel:
                     position = None
                 
                 elif position:
-                    unrealized = (prices[i] - position['entry_price']) / position['entry_price']
+                    unrealized = (prices[i] - position['entry']) / position['entry']
                     reward = unrealized * position['size'] * 0.001
                 
                 # A2C update

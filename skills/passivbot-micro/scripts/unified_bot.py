@@ -667,7 +667,80 @@ class UnifiedBot:
         hours_since_exit = (datetime.now() - last_exit_time).total_seconds() / 3600
         return hours_since_exit >= self.config.trend_follow_reentry_cooldown_hours
 
-    def should_enter_trend_follow(self, price: float, price_history: List[float]) -> bool:
+    def should_enter_momentum(self, price: float, price_history: List[float]) -> bool:
+        """
+        MOMENTUM STRATEGY - Simple SMA-based entry.
+        Enters when price > SMA20 + threshold.
+        Uses maker fees (0.03% total).
+        """
+        if len(price_history) < 20:
+            return False
+        
+        sma20 = sum(price_history[-20:]) / 20
+        deviation = (price - sma20) / sma20
+        
+        # Entry: Price > SMA + 2%
+        if deviation > 0.02:
+            logger.info(f"📈 MOMENTUM ENTRY: Price ${price:.0f} > SMA20 ${sma20:.0f} (+{deviation*100:.1f}%)")
+            return True
+        
+        return False
+    
+    def should_exit_momentum(self, position: Dict, current_price: float, price_history: List[float]) -> bool:
+        """
+        MOMENTUM EXIT - Exit when price < SMA20 - threshold.
+        """
+        if len(price_history) < 20:
+            return False
+        
+        sma20 = sum(price_history[-20:]) / 20
+        deviation = (current_price - sma20) / sma20
+        
+        # Exit: Price < SMA - 2%
+        if deviation < -0.02:
+            pnl = (current_price - position['entry_price']) / position['entry_price']
+            logger.info(f"📉 MOMENTUM EXIT: Price ${current_price:.0f} < SMA20 ${sma20:.0f} ({deviation*100:.1f}%), PnL: {pnl*100:+.2f}%")
+            return True
+        
+        return False
+    
+    async def open_momentum_position(self, price: float) -> Optional[Dict]:
+        """Open momentum long position."""
+        position_size = self.config.initial_capital * 0.20  # 20% position
+        amount = position_size / price
+        
+        # Use maker fees (0.015% entry)
+        fee = position_size * 0.00015
+        
+        logger.info(f"🚀 OPEN MOMENTUM LONG: ${position_size:.2f} @ ${price:.2f} (Fee: ${fee:.3f})")
+        
+        if self.config.testnet:
+            return {
+                'id': f"momentum_{int(time.time())}",
+                'entry_price': price,
+                'amount': amount,
+                'size': position_size,
+                'type': 'momentum',
+                'fee_paid': fee
+            }
+        return None
+    
+    async def close_momentum_position(self, position: Dict, price: float) -> float:
+        """Close momentum position with maker fee."""
+        entry = position['entry_price']
+        size = position['size']
+        
+        # PnL calculation
+        pnl_pct = (price - entry) / entry
+        pnl = pnl_pct * size
+        
+        # Maker fees: 0.015% entry + 0.015% exit = 0.03%
+        total_fees = size * 0.0003
+        pnl -= total_fees
+        
+        logger.info(f"📉 CLOSE MOMENTUM: ${size:.2f} @ ${price:.2f} | PnL: ${pnl:.2f} (Fees: ${total_fees:.3f})")
+        
+        return pnl
         """
         Phase 4: Continuous PPO action space.
         Action > threshold means BUY with intensity proportional to action.
@@ -1224,11 +1297,25 @@ class UnifiedBot:
                         await self.close_short(pos, price, 'strong_uptrend')
                         self.positions_short.remove(pos)
 
+                    # MOMENTUM STRATEGY: Check for momentum entries
+                    has_momentum = any(p.get('type') == 'momentum' for p in self.positions_long)
+                    if not has_momentum and self.should_enter_momentum(price, price_history):
+                        pos = await self.open_momentum_position(price)
+                        if pos:
+                            self.positions_long.append(pos)
+                    
+                    # Check momentum exits
+                    for pos in self.positions_long[:]:
+                        if pos.get('type') == 'momentum':
+                            if self.should_exit_momentum(pos, price, price_history):
+                                await self.close_momentum_position(pos, price)
+                                self.positions_long.remove(pos)
+
+                    # Existing trend_follow logic
                     for pos in self.positions_long[:]:
                         if pos.get('type') == 'trend_follow':
                             exit_reason = self.should_exit_trend_follow(pos, price, price_history)
                             if exit_reason == 'partial_tp':
-                                # Phase 3: Close partial position
                                 await self.partial_close_trend_follow(pos, price)
                             elif exit_reason:
                                 await self.close_trend_follow(pos, price, exit_reason)

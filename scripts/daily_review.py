@@ -78,9 +78,17 @@ def analyze_logs():
     for log_file in log_files:
         log_path = Path(log_file).expanduser()
         if log_path.exists():
-            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-                
+            try:
+                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+            except Exception as e:
+                print(f"⚠️ Could not read {log_path.name}: {e}")
+                continue
+            
+            # Only check yesterday's content
+            yesterday_lines = [line for line in content.split('\n') if line.startswith(yesterday)]
+            yesterday_content = '\n'.join(yesterday_lines)
+            
             # Look for errors
             error_patterns = [
                 (r'ERROR.*Failed to connect', 'API Connection Failed', True, 'restart_bots'),
@@ -91,9 +99,9 @@ def analyze_logs():
             ]
             
             for pattern, desc, auto_fix, fix_cmd in error_patterns:
-                if re.search(pattern, content, re.IGNORECASE):
+                if re.search(pattern, yesterday_content, re.IGNORECASE):
                     # Count occurrences
-                    count = len(re.findall(pattern, content, re.IGNORECASE))
+                    count = len(re.findall(pattern, yesterday_content, re.IGNORECASE))
                     if count > 0:
                         issues.append({
                             'source': log_path.name,

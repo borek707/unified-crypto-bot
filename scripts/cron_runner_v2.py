@@ -26,6 +26,7 @@ def init_database():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Crypto prices table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS crypto_prices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,11 +39,29 @@ def init_database():
         )
     ''')
     
+    # Stock prices table - FIX: Added for NASDAQ/AAPL persistence
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS stock_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            name TEXT,
+            price REAL,
+            previous_close REAL,
+            change REAL,
+            change_percent REAL,
+            volume INTEGER,
+            high_24h REAL,
+            low_24h REAL,
+            source TEXT DEFAULT 'yahoo'
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
 def save_price(coin, price_data):
-    """Save price to database."""
+    """Save crypto price to database."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -56,6 +75,33 @@ def save_price(coin, price_data):
         price_data.get('ath'),
         price_data.get('change_24h'),
         price_data.get('source', 'unknown')
+    ))
+    
+    conn.commit()
+    conn.close()
+
+
+def save_stock_price(symbol, stock_data):
+    """Save stock price to database."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO stock_prices 
+        (timestamp, symbol, name, price, previous_close, change, change_percent, volume, high_24h, low_24h, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        datetime.now().isoformat(),
+        symbol,
+        stock_data.get('name', symbol),
+        stock_data.get('current_price'),
+        stock_data.get('previous_close'),
+        stock_data.get('change'),
+        stock_data.get('change_percent'),
+        stock_data.get('volume_24h'),
+        stock_data.get('high_24h'),
+        stock_data.get('low_24h'),
+        'yahoo'
     ))
     
     conn.commit()
@@ -120,7 +166,7 @@ def main():
             print(f"Gold bot: {status}")
         print()
     
-    # Yahoo Finance - co godzinę
+    # Yahoo Finance - co godzinę - FIX: Now saves to database
     if minute == 0:
         SCRIPT_DIR = Path('~/.openclaw/workspace/skills/finance-tracker/scripts').expanduser()
         for symbol in ['^IXIC', 'AAPL']:
@@ -136,7 +182,18 @@ def main():
                 provider = 'yahoo'
                 can_call, error = check_rate_limit(provider)
                 if can_call:
-                    status = 'SUCCESS' if result.returncode == 0 else f'ERROR: {result.stderr[:50]}'
+                    if result.returncode == 0:
+                        try:
+                            stock_data = json.loads(result.stdout)
+                            if 'error' not in stock_data:
+                                save_stock_price(symbol, stock_data)
+                                status = 'SUCCESS'
+                            else:
+                                status = f"ERROR: {stock_data['error']}"
+                        except json.JSONDecodeError:
+                            status = 'ERROR: Invalid JSON response'
+                    else:
+                        status = f'ERROR: {result.stderr[:50]}'
                     log_call(provider, f'fetch_stock_{symbol}', status)
                     print(f"Stock {symbol}: {status}")
                 time.sleep(5)

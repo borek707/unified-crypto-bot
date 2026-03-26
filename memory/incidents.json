@@ -388,5 +388,57 @@
       "status": "open",
       "fix_attempts": 0
     }
+  ],
+  "2026-03-25": [
+    {
+      "timestamp": "2026-03-25T08:00:02.894221",
+      "category": "auto_fix_attempt",
+      "description": "API Connection Failed (12x) - FAILED",
+      "severity": "high",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-25T08:00:02.896018",
+      "category": "auto_fix_attempt",
+      "description": "Exchange Init Failed (12x) - FAILED",
+      "severity": "high",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-25T08:00:02.899514",
+      "category": "manual_fix_needed",
+      "description": "State Save Failed (4x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-25T08:00:02.900970",
+      "category": "manual_fix_needed",
+      "description": "State Load Failed (3x)",
+      "severity": "medium",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    },
+    {
+      "timestamp": "2026-03-25T08:00:02.903550",
+      "category": "auto_fix_attempt",
+      "description": "Bot process not running (crashed?) - FAILED",
+      "severity": "high",
+      "auto_fixable": false,
+      "fix_command": null,
+      "status": "open",
+      "fix_attempts": 0
+    }
   ]
 }
